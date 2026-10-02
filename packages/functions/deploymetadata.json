@@ -1,0 +1,50 @@
+{
+  "runtime": "TypeScript",
+  "functionsMetadata": [
+    {
+      "name": "syncInventory",
+      "scriptFile": "src\\function_app.ts",
+      "bindings": [
+        {
+          "name": "req",
+          "type": "httpTrigger",
+          "direction": "in",
+          "authLevel": "anonymous",
+          "methods": [
+            "post"
+          ],
+          "route": "syncInventory"
+        },
+        {
+          "name": "$return",
+          "type": "http",
+          "direction": "out"
+        },
+        {
+          "name": "__generic_Fabric",
+          "direction": "in",
+          "type": "FabricItem",
+          "alias": "",
+          "audienceType": "Fabric"
+        }
+      ],
+      "fabricProperties": {
+        "fabricMetadataSchemaVersion": "1.0",
+        "fabricFunctionReturnType": "Promise<SyncSummary>",
+        "fabricFunctionParameters": [
+          {
+            "name": "triggeredBy",
+            "dataType": "string",
+            "hasDefaultValue": false
+          },
+          {
+            "name": "ctx",
+            "dataType": "RayfinContext<UniversalAppSchema, AudienceType.Fabric>",
+            "hasDefaultValue": false
+          }
+        ]
+      },
+      "functionCode": "udf.func(\n  'syncInventory',\n  async (\n    triggeredBy: string,\n    ctx: RayfinContext<UniversalAppSchema, AudienceType.Fabric>\n  ): Promise<SyncSummary> => runSyncInventory(triggeredBy, ctx),\n  []\n)"
+    }
+  ]
+}

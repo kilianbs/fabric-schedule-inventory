@@ -12,7 +12,11 @@ import {
   LABEL_COLUMN,
 } from '@/components/gantt-group.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
-import { buildGantt, WEEKDAY_NAMES } from '@/lib/gantt';
+import {
+  buildGantt,
+  countUnresolvedCapacities,
+  WEEKDAY_NAMES,
+} from '@/lib/gantt';
 import type { GroupBy } from '@/lib/gantt';
 import { cn } from '@/lib/utils';
 
@@ -74,6 +78,10 @@ export function GanttView({
       return next;
     });
 
+  const unresolvedCapacities = useMemo(
+    () => countUnresolvedCapacities(artifacts),
+    [artifacts]
+  );
   const maxLoad = Math.max(1, ...model.groups.map((group) => group.peak.count));
   const droppedEnded = model.skipped.filter((s) => s.reason === 'ended').length;
   const droppedMonthly = model.skipped.filter((s) => s.reason === 'monthly').length;
@@ -187,6 +195,9 @@ export function GanttView({
               messages={[
                 runs.length === 0
                   ? 'No run history yet: bars use a placeholder width. Run a sync to collect recent job runs.'
+                  : null,
+                unresolvedCapacities > 0
+                  ? `Capacity names are unavailable for ${unresolvedCapacities} capacit${unresolvedCapacities === 1 ? 'y' : 'ies'}, shown by id. Names resolve only when the app identity has Admin or Contributor access to the capacity.`
                   : null,
                 model.timeZones.length > 1
                   ? `Schedules use ${model.timeZones.length} time zones (${model.timeZones.join(', ')}). Each bar is shown in its own schedule's local time, not converted.`

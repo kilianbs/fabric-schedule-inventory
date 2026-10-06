@@ -87,6 +87,8 @@ export interface GanttRow {
 export interface GanttGroup {
   key: string;
   label: string;
+  /** Capacity groups only: the label is an id fallback, not a real name. */
+  nameUnavailable: boolean;
   rows: GanttRow[];
   /** Concurrent bars per minute of the day (length 1440). */
   load: number[];
@@ -186,21 +188,44 @@ function occurrencesFor(
   return { kind: 'skip', reason: 'invalid' };
 }
 
+export interface CapacityInfo {
+  key: string;
+  /** Single source of the capacity label (group header, filter, tooltip). */
+  label: string;
+  /** False when only the id is known (name lookup failed or was not allowed). */
+  nameKnown: boolean;
+}
+
+export function capacityInfo(artifact: ArtifactRecord): CapacityInfo {
+  const id = artifact.capacityId;
+  const name = artifact.capacityName;
+  if (name) return { key: id ?? name, label: name, nameKnown: true };
+  if (!id) return { key: '', label: 'No capacity', nameKnown: true };
+  return { key: id, label: `Capacity ${id.slice(0, 8)}`, nameKnown: false };
+}
+
+/** Distinct capacities that have an id but no resolved name. */
+export function countUnresolvedCapacities(
+  artifacts: readonly ArtifactRecord[]
+): number {
+  const ids = new Set<string>();
+  for (const artifact of artifacts) {
+    if (artifact.capacityId && !artifact.capacityName)
+      ids.add(artifact.capacityId);
+  }
+  return ids.size;
+}
+
 function groupOf(
   artifact: ArtifactRecord,
   groupBy: GroupBy
-): { key: string; label: string } {
+): { key: string; label: string; nameUnavailable: boolean } {
   if (groupBy === 'workspace') {
     const name = artifact.workspaceName || artifact.workspaceId || 'Unknown';
-    return { key: name, label: name };
+    return { key: name, label: name, nameUnavailable: false };
   }
-  const id = artifact.capacityId;
-  if (!id && !artifact.capacityName)
-    return { key: '', label: 'No capacity' };
-  return {
-    key: id ?? artifact.capacityName ?? '',
-    label: artifact.capacityName ?? `${id?.slice(0, 8)}…`,
-  };
+  const { key, label, nameKnown } = capacityInfo(artifact);
+  return { key, label, nameUnavailable: !nameKnown };
 }
 
 function toBars(
@@ -228,7 +253,12 @@ function addBars(load: number[], bars: readonly GanttBar[]) {
   }
 }
 
-function summarizeGroup(key: string, label: string, rows: GanttRow[]): GanttGroup {
+function summarizeGroup(
+  key: string,
+  label: string,
+  nameUnavailable: boolean,
+  rows: GanttRow[]
+): GanttGroup {
   const load = new Array<number>(MINUTES_PER_DAY).fill(0);
   const ownLoads = rows.map((row) => {
     const own = new Array<number>(MINUTES_PER_DAY).fill(0);
@@ -251,7 +281,7 @@ function summarizeGroup(key: string, label: string, rows: GanttRow[]): GanttGrou
     .map((row) => row.artifact.id);
 
   rows.sort((a, b) => a.firstStartMin - b.firstStartMin);
-  return { key, label, rows, load, peak, overlapping };
+  return { key, label, nameUnavailable, rows, load, peak, overlapping };
 }
 
 export function buildGantt(input: GanttInput): GanttModel {
@@ -259,7 +289,10 @@ export function buildGantt(input: GanttInput): GanttModel {
   const now = input.now ?? new Date();
   const skipped: SkippedSchedule[] = [];
   const zones = new Set<string>();
-  const grouped = new Map<string, { label: string; rows: GanttRow[] }>();
+  const grouped = new Map<
+    string,
+    { label: string; nameUnavailable: boolean; rows: GanttRow[] }
+  >();
 
   for (const artifact of input.artifacts) {
     const duration = averageDuration(input.runs, artifact.id, input.runCount);
@@ -289,8 +322,8 @@ export function buildGantt(input: GanttInput): GanttModel {
     }
     if (bars.length === 0) continue;
 
-    const { key, label } = groupOf(artifact, input.groupBy);
-    const bucket = grouped.get(key) ?? { label, rows: [] };
+    const { key, label, nameUnavailable } = groupOf(artifact, input.groupBy);
+    const bucket = grouped.get(key) ?? { label, nameUnavailable, rows: [] };
     bucket.rows.push({
       artifact,
       bars,
@@ -303,8 +336,10 @@ export function buildGantt(input: GanttInput): GanttModel {
     grouped.set(key, bucket);
   }
 
-  const groups = Array.from(grouped, ([key, { label, rows }]) =>
-    summarizeGroup(key, label, rows)
+  const groups = Array.from(
+    grouped,
+    ([key, { label, nameUnavailable, rows }]) =>
+      summarizeGroup(key, label, nameUnavailable, rows)
   ).sort(
     (a, b) => b.peak.count - a.peak.count || a.label.localeCompare(b.label)
   );

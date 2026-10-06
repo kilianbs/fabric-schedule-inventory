@@ -108,6 +108,20 @@ describe('GanttView', () => {
     expect(screen.getAllByText('no run history').length).toBeGreaterThan(0);
   });
 
+  it('labels capacities by id and explains why when names are unavailable', () => {
+    renderGantt({
+      artifacts: [
+        { ...artifacts[0], capacityId: 'abcdef0123456789', capacityName: undefined },
+      ] as ArtifactRecord[],
+    });
+    expect(
+      screen.getByRole('button', { name: /Capacity abcdef01 name unavailable/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Capacity names are unavailable for 1 capacity.*Admin or Contributor/)
+    ).toBeInTheDocument();
+  });
+
   it('shows an empty state without scheduled artifacts', () => {
     renderGantt({ artifacts: [], schedulesByArtifact: new Map() });
     expect(screen.getByText('Nothing to plot for this day')).toBeInTheDocument();

@@ -9,6 +9,8 @@ import type {
 import {
   averageDuration,
   buildGantt,
+  capacityInfo,
+  countUnresolvedCapacities,
   FALLBACK_DURATION_SECONDS,
   resolveWeekday,
 } from '@/lib/gantt';
@@ -291,6 +293,47 @@ describe('buildGantt grouping and load', () => {
       'a2',
       'a1',
     ]);
+  });
+});
+
+describe('capacity labels', () => {
+  it('uses the name, an id fallback, or "No capacity"', () => {
+    expect(
+      capacityInfo(artifact('a', { capacityId: 'c-1', capacityName: 'Prod' }))
+    ).toEqual({ key: 'c-1', label: 'Prod', nameKnown: true });
+    expect(
+      capacityInfo(artifact('a', { capacityId: '1234567890abcdef' }))
+    ).toEqual({ key: '1234567890abcdef', label: 'Capacity 12345678', nameKnown: false });
+    expect(capacityInfo(artifact('a'))).toMatchObject({
+      label: 'No capacity',
+      nameKnown: true,
+    });
+  });
+
+  it('counts distinct capacities whose name is unresolved', () => {
+    expect(
+      countUnresolvedCapacities([
+        artifact('a', { capacityId: 'c1' }),
+        artifact('b', { capacityId: 'c1' }),
+        artifact('c', { capacityId: 'c2' }),
+        artifact('d', { capacityId: 'c3', capacityName: 'Prod' }),
+        artifact('e'),
+      ])
+    ).toBe(2);
+  });
+
+  it('flags capacity groups that only have an id', () => {
+    const model = buildGantt(
+      input(
+        [artifact('a1', { capacityId: 'abcdef0123456789' })],
+        [schedule('s1', 'a1')],
+        { groupBy: 'capacity' }
+      )
+    );
+    expect(model.groups[0]).toMatchObject({
+      label: 'Capacity abcdef01',
+      nameUnavailable: true,
+    });
   });
 });
 

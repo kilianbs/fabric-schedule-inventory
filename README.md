@@ -14,6 +14,7 @@ Each stored artifact keeps its schedules, its capacity (id and, when it can be r
 - **Inventory** (`#/`): every scheduled artifact with its schedules.
 - **Gantt** (`#/gantt`): a "typical day" 24 h timeline, one row per scheduled artifact. Bars start at the scheduled times and are as wide as the average duration of the last *N* runs (1, 3, 5, 10 or 20; default 5). Pick the weekday, group rows by **capacity** or **workspace**, and use the per-group load strip and peak concurrency to spot overlaps.
   Artifacts without run history get a hatched placeholder bar. Cron schedules are capped at 288 bars per day, monthly schedules are listed but not drawn, and times are shown in each schedule's own local time zone (mixed zones are flagged, not converted).
+  Capacity names come from `GET /capacities`, which Fabric only answers for capacities where the app identity is an Admin or Contributor. Otherwise the Gantt shows `Capacity <first 8 id chars>` with a "name unavailable" marker, and the sync records a note with the number of unresolved capacities. Grant the app identity access to the capacity and sync again to resolve names; capacity fields are cleared when a workspace loses its capacity.
 - **About**: what the app stores and the latest sync.
 
 Job runs are stored in the `JobRun` entity at sync time because the Fabric token only exists inside the function; the page loads them lazily when the Gantt route opens.

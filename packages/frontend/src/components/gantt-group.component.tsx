@@ -61,7 +61,15 @@ export function GanttGroupSection({
               )}
             />
             <span className="min-w-0">
-              <span className="block truncate font-semibold">{group.label}</span>
+              <span className="block truncate font-semibold">
+                {group.label}
+                {group.nameUnavailable ? ' ' : null}
+                {group.nameUnavailable ? (
+                  <span className="text-200 font-normal text-muted-foreground">
+                    name unavailable
+                  </span>
+                ) : null}
+              </span>
               <span className="text-200 block font-normal text-muted-foreground">
                 {formatNumber(group.rows.length)} artifact
                 {group.rows.length === 1 ? '' : 's'} · peak {group.peak.count} at{' '}

@@ -123,7 +123,10 @@ async function runSyncInventory(
     // Best effort: capacity display names (id -> name). A failure here (the
     // app identity may lack capacity access) only leaves names undefined.
     const capacityNames = new Map<string, string>();
+    // Fabric only lists capacities where the caller is an Admin or
+    // Contributor, so an empty or failed result is expected for app identities.
     const capacitiesResult = await listAll<FabricCapacity>('/capacities', token);
+    const capacitiesListed = capacitiesResult.ok;
     if (capacitiesResult.ok) {
       for (const capacity of capacitiesResult.value) {
         if (typeof capacity?.id === 'string' && capacity.displayName) {
@@ -212,6 +215,21 @@ async function runSyncInventory(
       );
     });
 
+    const unresolvedCapacities = new Set(
+      observations
+        .map((observation) => observation.workspace.capacityId?.toLowerCase())
+        .filter(
+          (id): id is string => typeof id === 'string' && !capacityNames.has(id)
+        )
+    );
+    if (unresolvedCapacities.size > 0) {
+      recordError(
+        `Capacity names unavailable for ${unresolvedCapacities.size} capacities${
+          capacitiesListed ? '' : ' (capacity list not readable)'
+        }: the app identity needs Admin or Contributor access to the capacity.`
+      );
+    }
+
     // Persist observations: upsert artifacts, replace their schedules and runs.
     const existingByWorkspaceItem = new Map<
       string,
@@ -287,7 +305,15 @@ async function runSyncInventory(
 
       let artifactId: string;
       if (existing) {
-        await data.Artifact.update({ id: existing.id }, artifactFields);
+        // The data client skips `undefined` fields on update (the stored
+        // value would survive) but sends `null` as a GraphQL null, so clear
+        // the capacity pair explicitly. The typed input has no null, hence
+        // the narrow cast.
+        await data.Artifact.update({ id: existing.id }, {
+          ...artifactFields,
+          capacityId: artifactFields.capacityId ?? null,
+          capacityName: artifactFields.capacityName ?? null,
+        } as unknown as typeof artifactFields);
         artifactId = existing.id;
       } else {
         const created = await data.Artifact.create({

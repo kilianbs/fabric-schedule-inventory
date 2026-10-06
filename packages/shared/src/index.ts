@@ -15,6 +15,8 @@ export interface ArtifactRecord {
   displayName: string;
   description?: string;
   folderId?: string;
+  capacityId?: string;
+  capacityName?: string;
   jobTypesProbed: string;
   scheduleCount: number;
   present: boolean;

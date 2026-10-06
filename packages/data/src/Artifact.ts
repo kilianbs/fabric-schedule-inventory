@@ -18,10 +18,10 @@ import {
 /**
  * A Fabric artifact (item) whose type can carry job-scheduler schedules.
  *
- * One row per (workspace, item) pair observed during a sync. Items the scan
- * no longer observes in an accessible workspace are soft-hidden with
- * `present = false` instead of deleted, so a temporary permission change
- * never erases inventory history. The UI filters on `present` by default.
+ * One row per (workspace, item) pair observed during a sync that has at least
+ * one schedule. Items that lose their schedules, or disappear from a
+ * successfully scanned workspace, are deleted together with their schedules.
+ * `present` is legacy: rows are always written as `true`.
  *
  * Schedule counts are denormalized here for fast listing; the full schedule
  * details live in the `Schedule` entity keyed by `artifactRowId`.
@@ -46,6 +46,10 @@ export class Artifact {
   @text({ min: 1, max: 500 }) displayName!: string;
   @text({ optional: true, max: 2000 }) description?: string;
   @text({ optional: true, max: 100 }) folderId?: string;
+  /** Fabric capacity GUID of the workspace; absent for personal/shared workspaces. */
+  @text({ optional: true, max: 100 }) capacityId?: string;
+  /** Best-effort capacity display name resolved at sync time. */
+  @text({ optional: true, max: 400 }) capacityName?: string;
   /** Job types probed for this artifact, comma-separated (bounded by the scan map). */
   @text({ max: 300 }) jobTypesProbed!: string;
   /** Number of schedules found across all probed job types. */

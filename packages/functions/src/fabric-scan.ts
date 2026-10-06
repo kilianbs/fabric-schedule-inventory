@@ -71,6 +71,13 @@ export interface FabricWorkspace {
   displayName?: string;
   description?: string;
   type?: string;
+  /** Absent for personal / shared-capacity workspaces. */
+  capacityId?: string;
+}
+
+export interface FabricCapacity {
+  id: string;
+  displayName?: string;
 }
 
 export interface FabricItem {

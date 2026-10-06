@@ -6,6 +6,7 @@ import {
 import type { UniversalAppSchema } from '@rayfin-app/shared';
 
 import {
+  type FabricCapacity,
   isSchedulableType,
   listAll,
   listItemSchedules,
@@ -115,6 +116,18 @@ async function runSyncInventory(
     const workspacesTotal = workspaces.length;
     await reportProgress('discover', 5, { workspacesTotal });
 
+    // Best effort: capacity display names (id -> name). A failure here (the
+    // app identity may lack capacity access) only leaves names undefined.
+    const capacityNames = new Map<string, string>();
+    const capacitiesResult = await listAll<FabricCapacity>('/capacities', token);
+    if (capacitiesResult.ok) {
+      for (const capacity of capacitiesResult.value) {
+        if (typeof capacity?.id === 'string' && capacity.displayName) {
+          capacityNames.set(capacity.id.toLowerCase(), capacity.displayName);
+        }
+      }
+    }
+
     let workspacesScanned = 0;
     let workspacesFailed = 0;
     let artifactsFound = 0;
@@ -163,12 +176,15 @@ async function runSyncInventory(
             probe.schedules.filter((schedule) => typeof schedule?.id === 'string')
           );
         }
-        observations.push({
-          workspace,
-          item,
-          schedulesByJobType,
-          jobTypesProbed: jobTypes,
-        });
+        // Only artifacts with at least one schedule are inventoried.
+        if ([...schedulesByJobType.values()].some((s) => s.length > 0)) {
+          observations.push({
+            workspace,
+            item,
+            schedulesByJobType,
+            jobTypesProbed: jobTypes,
+          });
+        }
       });
     }
 
@@ -234,6 +250,14 @@ async function runSyncInventory(
         displayName: (item.displayName ?? itemId).slice(0, 500),
         description: item.description?.slice(0, 2000),
         folderId: typeof item.folderId === 'string' ? item.folderId.slice(0, 100) : undefined,
+        capacityId:
+          typeof workspace.capacityId === 'string'
+            ? workspace.capacityId.slice(0, 100)
+            : undefined,
+        capacityName:
+          typeof workspace.capacityId === 'string'
+            ? capacityNames.get(workspace.capacityId.toLowerCase())?.slice(0, 400)
+            : undefined,
         jobTypesProbed: jobTypesProbed.join(',').slice(0, 300),
         scheduleCount: allSchedules.length,
         present: true,
@@ -271,22 +295,37 @@ async function runSyncInventory(
       schedulesFound += allSchedules.length;
     }
 
-    // Soft-hide artifacts of successfully scanned workspaces that this scan
-    // no longer observes. A permission change must not erase inventory.
+    // Delete artifacts (with their schedules) that no longer have schedules
+    // or no longer exist in successfully scanned workspaces. Workspaces that
+    // failed to scan are left alone, except legacy soft-hidden rows
+    // (`present: false`), which are purged unconditionally.
     await reportProgress('reconcile', 90);
     const observedKeys = new Set(
       observations.map((observation) =>
         artifactKey(observation.workspace.id, observation.item.id)
       )
     );
+    let deleteFailures = 0;
     for (const [key, existing] of existingByWorkspaceItem) {
-      if (observedKeys.has(key) || !existing.present) continue;
+      if (observedKeys.has(key)) continue;
       const [workspaceOfArtifact] = key.split('|');
-      if (!scannedWorkspaceIds.has(workspaceOfArtifact)) continue;
-      await data.Artifact.update(
-        { id: existing.id },
-        { present: false, lastSyncedAt: new Date() }
-      );
+      if (existing.present && !scannedWorkspaceIds.has(workspaceOfArtifact)) {
+        continue;
+      }
+      try {
+        const staleSchedules = await data.Schedule.findMany({
+          artifactRowId: { eq: existing.id },
+        });
+        for (const stale of staleSchedules) {
+          await data.Schedule.delete({ id: stale.id });
+        }
+        await data.Artifact.delete({ id: existing.id });
+      } catch {
+        deleteFailures++;
+      }
+    }
+    if (deleteFailures > 0) {
+      recordError(`Could not remove ${deleteFailures} outdated artifact(s).`);
     }
 
     const summary: SyncSummary = {

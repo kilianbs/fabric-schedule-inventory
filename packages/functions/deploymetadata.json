@@ -44,7 +44,7 @@
           }
         ]
       },
-      "functionCode": "udf.func(\n  'syncInventory',\n  async (\n    triggeredBy: string,\n    ctx: RayfinContext<UniversalAppSchema, AudienceType.Fabric>\n  ): Promise<SyncSummary> => runSyncInventory(triggeredBy, ctx),\n  []\n)"
+      "functionCode": "udf.func(\r\n  'syncInventory',\r\n  async (\r\n    triggeredBy: string,\r\n    ctx: RayfinContext<UniversalAppSchema, AudienceType.Fabric>\r\n  ): Promise<SyncSummary> => runSyncInventory(triggeredBy, ctx),\r\n  []\r\n)"
     }
   ]
 }

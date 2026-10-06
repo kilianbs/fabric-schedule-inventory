@@ -6,6 +6,18 @@ This is the workspace template the Rayfin Copilot plugin uses to build Fabric Ap
 The base is small on purpose: dynamic authentication, theming, an error boundary, and a welcome page that works inside or outside the Fabric portal after sign-in.
 Capabilities such as Power BI analytics and trusted server-side functions are added on demand with `npm run pack:add -- <pack>`.
 
+## Schedule inventory app
+
+This workspace is a Fabric schedule inventory. A server-side function (`syncInventory`) scans every workspace the app identity can access and **stores only artifacts that have at least one schedule**; artifacts without schedules are discarded, and previously stored ones are removed on the next sync.
+Each stored artifact keeps its schedules, its capacity (id and, when it can be resolved, name) and its last 20 job runs.
+
+- **Inventory** (`#/`): every scheduled artifact with its schedules.
+- **Gantt** (`#/gantt`): a "typical day" 24 h timeline, one row per scheduled artifact. Bars start at the scheduled times and are as wide as the average duration of the last *N* runs (1, 3, 5, 10 or 20; default 5). Pick the weekday, group rows by **capacity** or **workspace**, and use the per-group load strip and peak concurrency to spot overlaps.
+  Artifacts without run history get a hatched placeholder bar. Cron schedules are capped at 288 bars per day, monthly schedules are listed but not drawn, and times are shown in each schedule's own local time zone (mixed zones are flagged, not converted).
+- **About**: what the app stores and the latest sync.
+
+Job runs are stored in the `JobRun` entity at sync time because the Fabric token only exists inside the function; the page loads them lazily when the Gantt route opens.
+
 ## Workspace layout
 
 The application is an npm workspace with one control root and three base packages:

@@ -6,13 +6,7 @@
 //-----------------------------------------------------------------------
 
 import { useMemo, useState } from 'react';
-import {
-  CalendarCheck,
-  Folder,
-  MousePointerClick,
-  Search,
-  X,
-} from 'lucide-react';
+import { Folder, MousePointerClick, Search, X } from 'lucide-react';
 
 import { useCssTheme } from '@microsoft/fabric-visuals';
 import { DataGrid } from '@microsoft/fabric-datagrid';
@@ -68,7 +62,7 @@ const SECONDARY_BUTTON = cn(
 
 /**
  * The artifact schedule inventory: global figures, filters and a DataGrid of
- * every schedulable artifact, with the selected row's schedules beside it.
+ * every scheduled artifact, with the selected row's schedules beside it.
  */
 export function InventoryView({
   status,
@@ -302,19 +296,6 @@ export function InventoryView({
             onChange={(value) => updateFilter('type', value)}
             options={typeOptions}
           />
-          <button
-            type="button"
-            aria-pressed={filters.schedulesOnly}
-            onClick={() => updateFilter('schedulesOnly', !filters.schedulesOnly)}
-            className={cn(
-              SECONDARY_BUTTON,
-              filters.schedulesOnly &&
-                'border-primary bg-primary/10 text-primary hover:bg-primary/15'
-            )}
-          >
-            <CalendarCheck aria-hidden="true" className="icon-size-200" />
-            With schedules only
-          </button>
           {filtersChanged ? (
             <button
               type="button"
@@ -341,16 +322,14 @@ export function InventoryView({
 
         <div className="grid items-start gap-400 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           {visibleArtifacts.length === 0 ? (
-            filtersChanged || filters.schedulesOnly ? (
+            filtersChanged ? (
               <EmptyState
                 title="No artifacts match the current filters"
                 hint="Adjust the search or filters to see more artifacts."
                 action={
                   <button
                     type="button"
-                    onClick={() =>
-                      setFilters({ ...DEFAULT_FILTERS, schedulesOnly: false })
-                    }
+                    onClick={clearFilters}
                     className={SECONDARY_BUTTON}
                   >
                     <X aria-hidden="true" className="icon-size-200" />
@@ -360,7 +339,7 @@ export function InventoryView({
               />
             ) : (
               <EmptyState
-                title="No schedulable artifacts on file"
+                title="No scheduled artifacts on file"
                 hint="Run a sync to populate the inventory."
               />
             )

@@ -119,7 +119,7 @@ export function InventorySummary({ totals, lastRun }: InventorySummaryProps) {
           value={formatNumber(totals.workspaces)}
           hint={
             scanned === undefined
-              ? 'with schedulable artifacts'
+              ? 'with scheduled artifacts'
               : `${formatNumber(scanned)} scanned in last sync`
           }
         />
@@ -128,7 +128,7 @@ export function InventorySummary({ totals, lastRun }: InventorySummaryProps) {
           label="Artifacts"
           index={1}
           value={formatNumber(totals.artifacts)}
-          hint="schedulable items"
+          hint="scheduled items"
         />
         <Tile
           icon={CalendarClock}

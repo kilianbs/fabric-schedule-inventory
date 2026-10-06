@@ -18,8 +18,8 @@ const artifacts = [
 const ids = (list: ArtifactRecord[]) => list.map((artifact) => artifact.id);
 
 describe('filterArtifacts', () => {
-  it('keeps only scheduled artifacts by default', () => {
-    expect(ids(filterArtifacts(artifacts, DEFAULT_FILTERS))).toEqual(['a1', 'a3']);
+  it('keeps every artifact by default', () => {
+    expect(ids(filterArtifacts(artifacts, DEFAULT_FILTERS))).toEqual(['a1', 'a2', 'a3']);
   });
 
   it('searches names case-insensitively, ignoring surrounding spaces', () => {
@@ -28,14 +28,13 @@ describe('filterArtifacts', () => {
     ).toEqual(['a1', 'a3']);
   });
 
-  it('combines workspace, type and schedule filters', () => {
+  it('combines workspace and type filters', () => {
     expect(
       ids(
         filterArtifacts(artifacts, {
           query: '',
           workspace: 'Finance',
           type: 'Notebook',
-          schedulesOnly: false,
         })
       )
     ).toEqual(['a2']);
@@ -43,7 +42,7 @@ describe('filterArtifacts', () => {
       ids(
         filterArtifacts(artifacts, {
           ...DEFAULT_FILTERS,
-          workspace: 'Finance',
+          workspace: 'Ops',
           type: 'Notebook',
         })
       )
@@ -54,7 +53,7 @@ describe('filterArtifacts', () => {
 describe('isDefaultFilters', () => {
   it('treats whitespace-only search as default', () => {
     expect(isDefaultFilters({ ...DEFAULT_FILTERS, query: '   ' })).toBe(true);
-    expect(isDefaultFilters({ ...DEFAULT_FILTERS, schedulesOnly: false })).toBe(false);
+    expect(isDefaultFilters({ ...DEFAULT_FILTERS, type: 'Notebook' })).toBe(false);
     expect(isDefaultFilters({ ...DEFAULT_FILTERS, workspace: 'Ops' })).toBe(false);
   });
 });

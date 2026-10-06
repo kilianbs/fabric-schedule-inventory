@@ -14,22 +14,19 @@ export interface ArtifactFilters {
   workspace: string;
   /** Exact item type, or '' for all. */
   type: string;
-  schedulesOnly: boolean;
 }
 
 export const DEFAULT_FILTERS: ArtifactFilters = {
   query: '',
   workspace: '',
   type: '',
-  schedulesOnly: true,
 };
 
 export function isDefaultFilters(filters: ArtifactFilters): boolean {
   return (
     filters.query.trim() === DEFAULT_FILTERS.query &&
     filters.workspace === DEFAULT_FILTERS.workspace &&
-    filters.type === DEFAULT_FILTERS.type &&
-    filters.schedulesOnly === DEFAULT_FILTERS.schedulesOnly
+    filters.type === DEFAULT_FILTERS.type
   );
 }
 
@@ -45,8 +42,7 @@ export function filterArtifacts(
           artifact.displayName.toLowerCase().includes(query))) &&
       (filters.workspace === '' ||
         artifact.workspaceName === filters.workspace) &&
-      (filters.type === '' || artifact.itemType === filters.type) &&
-      (!filters.schedulesOnly || artifact.scheduleCount > 0)
+      (filters.type === '' || artifact.itemType === filters.type)
   );
 }
 

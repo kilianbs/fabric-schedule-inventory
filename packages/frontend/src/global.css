@@ -132,6 +132,66 @@
   --icon-size-500: 28px;
   --icon-size-600: 32px;
   --icon-size-700: 48px;
+
+  /* Motion — entrances only; loops stay with Tailwind's spin/pulse.
+     Usage: animate-* (e.g. animate-fade-up), stagger with an inline
+     animation-delay. Disabled under prefers-reduced-motion below. */
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 240ms var(--ease-emphasized) both;
+  --animate-fade-up: fade-up 420ms var(--ease-emphasized) both;
+  --animate-slide-in: slide-in 360ms var(--ease-emphasized) both;
+  --animate-grow-x: grow-x 700ms var(--ease-emphasized) both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes grow-x {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @utility icon-size-* {

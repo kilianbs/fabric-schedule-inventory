@@ -5,7 +5,17 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+import type { ReactNode } from 'react';
+import { Clock } from 'lucide-react';
+
 import type { ScheduleRecord } from '@rayfin-app/shared';
+
+import {
+  describeSchedule,
+  formatScheduleDateTime,
+  shortId,
+} from '@/lib/schedule-format';
+import { cn } from '@/lib/utils';
 
 /**
  * Renders the schedules of one artifact. Every value crossing into JSX is
@@ -19,62 +29,71 @@ export function ScheduleDetail({
   schedules: readonly ScheduleRecord[];
 }) {
   return (
-    <div className="space-y-300">
-      {schedules.map((schedule) => (
-        <article
+    <ul className="flex flex-col gap-300">
+      {schedules.map((schedule, index) => (
+        <li
           key={schedule.id}
-          className="border-border bg-background rounded-xl border p-400"
+          className={cn(
+            'border-border bg-background animate-fade-up rounded-xl border p-400 transition-colors hover:border-primary/40',
+            !schedule.enabled && 'border-dashed'
+          )}
+          // Stagger after the panel slides in; cap so long lists stay snappy.
+          style={{ animationDelay: `${120 + Math.min(index, 6) * 50}ms` }}
         >
-          <header className="mb-300 flex flex-wrap items-center gap-300">
-            <ScheduleBadge enabled={schedule.enabled} />
+          <header className="flex flex-wrap items-center justify-between gap-200">
             <h3 className="text-300 font-semibold">
-              {safeText(schedule.jobType)} · {safeText(schedule.configType)}
+              {safeText(schedule.jobType)}
             </h3>
+            <ScheduleBadge enabled={schedule.enabled} />
           </header>
-          <dl className="text-200 grid grid-cols-[auto_1fr] gap-x-400 gap-y-100">
-            <Detail term="Starts">{safeText(schedule.startDateTime)}</Detail>
-            <Detail term="Ends">{safeText(schedule.endDateTime)}</Detail>
+          <p className="text-300 mt-200 flex items-center gap-200">
+            <Clock
+              aria-hidden="true"
+              className="icon-size-200 shrink-0 text-muted-foreground"
+            />
+            <span className="font-medium">{describeSchedule(schedule)}</span>
+          </p>
+          <dl className="text-200 mt-300 grid grid-cols-[auto_1fr] gap-x-400 gap-y-100">
+            <Detail term="Starts">
+              {formatScheduleDateTime(schedule.startDateTime)}
+            </Detail>
+            <Detail term="Ends">
+              {formatScheduleDateTime(schedule.endDateTime)}
+            </Detail>
             <Detail term="Time zone">
               {safeText(schedule.localTimeZoneId)}
             </Detail>
-            {typeof schedule.intervalMinutes === 'number' ? (
-              <Detail term="Interval">
-                {`every ${schedule.intervalMinutes} min`}
-              </Detail>
-            ) : null}
-            <Detail term="Times">{joinList(parseJson(schedule.timesJson))}</Detail>
-            <Detail term="Weekdays">
-              {joinList(parseJson(schedule.weekdaysJson))}
-            </Detail>
-            <Detail term="Monthly">
-              {describeMonthly(schedule.monthlyConfigJson)}
-            </Detail>
             <Detail term="Created">
-              {safeText(schedule.createdDateTime)}
+              {formatScheduleDateTime(schedule.createdDateTime)}
             </Detail>
             <Detail term="Owner">
-              {`${safeText(schedule.ownerType)}${
-                schedule.ownerId ? ` (${shortId(schedule.ownerId)})` : ''
-              }`}
+              {safeText(schedule.ownerType)}
+              {schedule.ownerId ? (
+                <>
+                  {' '}
+                  <IdText value={schedule.ownerId} />
+                </>
+              ) : null}
             </Detail>
             <Detail term="Schedule ID">
-              {shortId(schedule.scheduleFabricId)}
+              <IdText value={schedule.scheduleFabricId} />
             </Detail>
           </dl>
-        </article>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
 function ScheduleBadge({ enabled }: { enabled: boolean }) {
   return (
     <span
-      className={`text-200 inline-flex items-center gap-200 rounded-full px-300 py-100 font-medium ${
+      className={cn(
+        'text-200 inline-flex items-center gap-200 rounded-full px-300 py-100 font-medium',
         enabled
           ? 'bg-primary/10 text-primary'
-          : 'bg-muted text-muted-foreground'
-      }`}
+          : 'bg-destructive/10 text-destructive'
+      )}
     >
       <span aria-hidden="true" className="h-100 w-100 rounded-full bg-current" />
       {enabled ? 'Enabled' : 'Disabled'}
@@ -82,68 +101,25 @@ function ScheduleBadge({ enabled }: { enabled: boolean }) {
   );
 }
 
-function Detail({
-  term,
-  children,
-}: {
-  term: string;
-  children: string;
-}) {
+/** Truncated identifier; the full value is available on hover. */
+function IdText({ value }: { value: string | undefined }) {
   return (
-    <>
-      <dt className="text-muted-foreground">{term}</dt>
-      <dd className="col-span-1 break-words">{children}</dd>
-    </>
+    <span
+      className="font-monospace text-muted-foreground"
+      title={typeof value === 'string' ? value : undefined}
+    >
+      {shortId(value)}
+    </span>
   );
 }
 
-/** Parse a JSON column defensively; bad or missing values render as unknown. */
-function parseJson(value: string | undefined): string[] | null {
-  if (typeof value !== 'string' || value.length === 0) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return null;
-    const strings = parsed.filter(
-      (entry): entry is string => typeof entry === 'string'
-    );
-    return strings.length === parsed.length ? strings : null;
-  } catch {
-    return null;
-  }
-}
-
-function describeMonthly(value: string | undefined): string {
-  if (typeof value !== 'string' || value.length === 0) return '—';
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (typeof parsed !== 'object' || parsed === null) return '—';
-    const record = parsed as { occurrence?: unknown; recurrence?: unknown };
-    const parts: string[] = [];
-    if (typeof record.recurrence === 'number')
-      parts.push(`every ${record.recurrence} month(s)`);
-    const occurrence = record.occurrence;
-    if (typeof occurrence === 'object' && occurrence !== null) {
-      const info = occurrence as Record<string, unknown>;
-      const bits = Object.entries(info)
-        .filter(([, v]) => v !== null && v !== undefined)
-        .map(([k, v]) => `${k}: ${String(v)}`);
-      if (bits.length > 0) parts.push(bits.join(', '));
-    }
-    return parts.length > 0 ? parts.join('; ') : '—';
-  } catch {
-    return '—';
-  }
-}
-
-function joinList(values: string[] | null): string {
-  if (values === null) return '—';
-  return values.length === 0 ? '—' : values.join(', ');
-}
-
-function shortId(value: string): string {
-  return typeof value === 'string' && value.length > 8
-    ? `${value.slice(0, 8)}…`
-    : safeText(value);
+function Detail({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{term}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </>
+  );
 }
 
 function safeText(value: unknown): string {

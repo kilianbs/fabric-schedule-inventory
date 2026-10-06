@@ -6,14 +6,14 @@
 //-----------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
-import { Info, LayoutDashboard, RefreshCw, RotateCw } from 'lucide-react';
+import { Info, LayoutDashboard, RefreshCw } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { SyncRunRecord } from '@rayfin-app/shared';
 
 import { FabricAppMark } from '@/FabricAppMark';
 import type { AppRoute } from '@/hooks/use-hash-route';
-import { cn, formatTimestamp } from '@/lib/utils';
+import { cn, formatNumber, formatTimestamp } from '@/lib/utils';
 
 interface NavItem {
   route: AppRoute;
@@ -44,7 +44,6 @@ export interface AppShellProps {
   artifactCount: number;
   isSyncing: boolean;
   onSync: () => void;
-  onRefresh: () => void;
   children: ReactNode;
 }
 
@@ -59,12 +58,12 @@ export function AppShell({
   artifactCount,
   isSyncing,
   onSync,
-  onRefresh,
   children,
 }: AppShellProps) {
   const lastSync = lastRun
     ? formatTimestamp(lastRun.finishedAt ?? lastRun.startedAt)
     : null;
+  const runTone = syncTone(lastRun?.status);
 
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
@@ -104,14 +103,14 @@ export function AppShell({
                       onNavigate(target);
                     }}
                     className={cn(
-                      'text-300 inline-flex items-center gap-200 rounded-lg border-l-4 px-300 py-200 font-medium transition-colors',
+                      'text-300 inline-flex items-center gap-200 rounded-lg border-l-4 px-300 py-200 font-medium transition-[color,background-color,border-color,translate] duration-200 hover:translate-x-100-nudge',
                       ACTION_FOCUS,
                       active
                         ? 'border-primary bg-primary/10 text-primary'
                         : 'text-foreground hover:bg-accent border-transparent'
                     )}
                   >
-                    <Icon aria-hidden="true" className="h-300 w-300" />
+                    <Icon aria-hidden="true" className="icon-size-200" />
                     {label}
                   </a>
                 );
@@ -132,10 +131,26 @@ export function AppShell({
               aria-hidden="true"
               className="bg-primary h-100 w-100 rounded-full"
             />
-            {artifactCount} schedulable artifact{artifactCount === 1 ? '' : 's'}
+            {formatNumber(artifactCount)} schedulable artifact
+            {artifactCount === 1 ? '' : 's'}
           </p>
-          <p className="text-200 text-muted-foreground">
-            {lastSync ? `Latest sync ${lastSync}` : 'Not synced yet'}
+          <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn('h-100 w-100 shrink-0 rounded-full', runTone.dot)}
+            />
+            <span>
+              {lastSync ? (
+                <>
+                  <span className={cn('font-medium', runTone.text)}>
+                    {runTone.label}
+                  </span>{' '}
+                  · {lastSync}
+                </>
+              ) : (
+                'Not synced yet'
+              )}
+            </span>
           </p>
         </div>
       </aside>
@@ -151,34 +166,51 @@ export function AppShell({
           <div className="flex flex-wrap items-center gap-200">
             <button
               type="button"
-              onClick={onRefresh}
-              className={cn(
-                'border-border bg-card hover:bg-accent text-300 inline-flex items-center gap-200 rounded-lg border px-300 py-200 font-medium transition-colors',
-                ACTION_FOCUS
-              )}
-            >
-              <RotateCw aria-hidden="true" className="h-300 w-300" />
-              Refresh
-            </button>
-            <button
-              type="button"
               onClick={onSync}
               disabled={isSyncing}
               className={cn(
-                'bg-primary text-primary-foreground hover:bg-primary/90 text-300 inline-flex items-center gap-200 rounded-lg px-400 py-200 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                'bg-primary text-primary-foreground hover:bg-primary/90 text-300 inline-flex items-center gap-200 rounded-lg px-400 py-200 font-medium transition-[background-color,scale,box-shadow] duration-150 hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
                 ACTION_FOCUS
               )}
             >
               <RefreshCw
                 aria-hidden="true"
-                className={cn('h-300 w-300', isSyncing && 'animate-spin')}
+                className={cn('icon-size-200', isSyncing && 'animate-spin')}
               />
               {isSyncing ? 'Syncing…' : 'Sync'}
             </button>
           </div>
         </div>
-        <div className="bg-accent min-w-0 flex-1">{children}</div>
+        <div key={route} className="bg-accent animate-fade-in min-w-0 flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );
+}
+
+/** Label and colour for the latest sync run's status. */
+function syncTone(status: string | undefined): {
+  label: string;
+  dot: string;
+  text: string;
+} {
+  switch (status) {
+    case 'failed':
+      return { label: 'Failed', dot: 'bg-destructive', text: 'text-destructive' };
+    case 'running':
+      return {
+        label: 'Running',
+        dot: 'bg-primary animate-pulse',
+        text: 'text-primary',
+      };
+    case 'completed':
+      return { label: 'Synced', dot: 'bg-primary', text: 'text-foreground' };
+    default:
+      return {
+        label: status && status.length > 0 ? status : 'Unknown',
+        dot: 'bg-muted-foreground',
+        text: 'text-foreground',
+      };
+  }
 }

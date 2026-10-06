@@ -81,4 +81,19 @@ describe('InventorySummary', () => {
         .className.includes('text-destructive')
     ).toBe(false);
   });
+
+  it('no longer shows a last-sync tile (the sidebar carries it)', () => {
+    renderSummary(baseTotals);
+    expect(screen.queryByText('Last sync')).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+  });
+
+  it('describes the enabled/disabled split for screen readers', () => {
+    renderSummary(baseTotals);
+    expect(
+      screen.getByRole('img', {
+        name: `${fmt(3200)} enabled, ${fmt(10)} disabled`,
+      })
+    ).toBeTruthy();
+  });
 });

@@ -6,6 +6,13 @@
 //-----------------------------------------------------------------------
 
 import { useMemo, useState } from 'react';
+import {
+  CalendarCheck,
+  Folder,
+  MousePointerClick,
+  Search,
+  X,
+} from 'lucide-react';
 
 import { useCssTheme } from '@microsoft/fabric-visuals';
 import { DataGrid } from '@microsoft/fabric-datagrid';
@@ -20,8 +27,20 @@ import type {
 import { InventorySummary } from '@/components/inventory-summary.component';
 import { ScheduleDetail } from '@/components/schedule-detail.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
+import {
+  countBy,
+  DEFAULT_FILTERS,
+  filterArtifacts,
+  isDefaultFilters,
+} from '@/lib/filter-artifacts';
+import type { ArtifactFilters } from '@/lib/filter-artifacts';
 import { computeTotals } from '@/lib/inventory-totals';
-import { cn, formatNumber, formatTimestamp } from '@/lib/utils';
+import {
+  cn,
+  formatNumber,
+  formatRelativeTime,
+  formatTimestamp,
+} from '@/lib/utils';
 
 export type InventoryStatus = 'loading' | 'error' | 'ready';
 
@@ -34,12 +53,22 @@ export interface InventoryViewProps {
   onRetry?: () => void;
 }
 
-const CONTROL_CLASS =
-  'border-input bg-background text-foreground focus-visible:ring-ring rounded-lg border px-300 py-200 text-300 focus-visible:ring-2 focus-visible:outline-none';
+const FOCUS =
+  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none';
+
+const CONTROL_CLASS = cn(
+  'border-input bg-background text-foreground text-300 h-800 rounded-lg border px-300',
+  FOCUS
+);
+
+const SECONDARY_BUTTON = cn(
+  'border-border bg-background hover:bg-accent text-300 inline-flex h-800 items-center gap-200 rounded-lg border px-300 font-medium transition-[color,background-color,border-color,scale] duration-150 active:scale-95',
+  FOCUS
+);
 
 /**
  * The artifact schedule inventory: global figures, filters and a DataGrid of
- * every schedulable artifact, with a selected row's schedules below the grid.
+ * every schedulable artifact, with the selected row's schedules beside it.
  */
 export function InventoryView({
   status,
@@ -50,36 +79,23 @@ export function InventoryView({
   onRetry,
 }: InventoryViewProps) {
   const theme = useCssTheme();
-  const [workspaceFilter, setWorkspaceFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [schedulesOnly, setSchedulesOnly] = useState(true);
+  const [filters, setFilters] = useState<ArtifactFilters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const updateFilter = <K extends keyof ArtifactFilters>(
+    key: K,
+    value: ArtifactFilters[K]
+  ) => setFilters((current) => ({ ...current, [key]: value }));
+
   const workspaceOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(artifacts.map((artifact) => artifact.workspaceName))
-      ).sort((a, b) => a.localeCompare(b)),
+    () => countBy(artifacts, 'workspaceName'),
     [artifacts]
   );
-  const typeOptions = useMemo(
-    () =>
-      Array.from(new Set(artifacts.map((artifact) => artifact.itemType))).sort(
-        (a, b) => a.localeCompare(b)
-      ),
-    [artifacts]
-  );
+  const typeOptions = useMemo(() => countBy(artifacts, 'itemType'), [artifacts]);
 
   const visibleArtifacts = useMemo(
-    () =>
-      artifacts.filter(
-        (artifact) =>
-          (workspaceFilter === '' ||
-            artifact.workspaceName === workspaceFilter) &&
-          (typeFilter === '' || artifact.itemType === typeFilter) &&
-          (!schedulesOnly || artifact.scheduleCount > 0)
-      ),
-    [artifacts, workspaceFilter, typeFilter, schedulesOnly]
+    () => filterArtifacts(artifacts, filters),
+    [artifacts, filters]
   );
 
   const columns = useMemo<GridColumnDef[]>(
@@ -89,17 +105,41 @@ export function InventoryView({
         header: 'Artifact',
         sortable: true,
         minWidth: 240,
-        cellRenderer: (value) => (
-          <span className="text-300 font-medium">{String(value ?? '')}</span>
-        ),
+        cellRenderer: (value) => {
+          const name = String(value ?? '');
+          return (
+            <span className="text-300 block truncate font-medium" title={name}>
+              {name}
+            </span>
+          );
+        },
       },
-      { id: 'itemType', header: 'Type', sortable: true, filterable: true },
+      {
+        id: 'itemType',
+        header: 'Type',
+        sortable: true,
+        filterable: true,
+        minWidth: 150,
+        cellRenderer: (value) => <TypeBadge value={String(value ?? '')} />,
+      },
       {
         id: 'workspaceName',
         header: 'Workspace',
         sortable: true,
         filterable: true,
         minWidth: 180,
+        cellRenderer: (value) => {
+          const name = String(value ?? '');
+          return (
+            <span
+              className="text-300 flex min-w-0 items-center gap-200 text-muted-foreground"
+              title={name}
+            >
+              <Folder aria-hidden="true" className="icon-size-100 shrink-0" />
+              <span className="truncate">{name}</span>
+            </span>
+          );
+        },
       },
       {
         id: 'scheduleCount',
@@ -107,6 +147,16 @@ export function InventoryView({
         sortable: true,
         numericStyling: true,
         width: 110,
+        cellRenderer: (value) => {
+          const count = typeof value === 'number' ? value : 0;
+          return count === 0 ? (
+            <span className="text-300 text-muted-foreground">—</span>
+          ) : (
+            <span className="text-300 font-semibold tabular-nums">
+              {formatNumber(count)}
+            </span>
+          );
+        },
       },
       {
         id: 'disabledCount',
@@ -116,15 +166,10 @@ export function InventoryView({
         width: 110,
         cellRenderer: (value) => {
           const count = typeof value === 'number' ? value : 0;
-          return (
-            <span
-              className={cn(
-                'text-200 inline-flex items-center gap-200 rounded-full px-300 py-100 font-medium tabular-nums',
-                count > 0
-                  ? 'bg-destructive/10 text-destructive'
-                  : 'bg-muted text-muted-foreground'
-              )}
-            >
+          return count === 0 ? (
+            <span className="text-300 text-muted-foreground">—</span>
+          ) : (
+            <span className="bg-destructive/10 text-destructive text-200 inline-flex items-center rounded-full px-300 py-100 font-semibold tabular-nums">
               {formatNumber(count)}
             </span>
           );
@@ -133,11 +178,17 @@ export function InventoryView({
       {
         id: 'lastSynced',
         header: 'Last synced',
-        width: 170,
-        cellRenderer: (value) => (
-          <span className="text-200 text-muted-foreground">{String(value ?? '')}</span>
+        width: 150,
+        cellRenderer: (value, row) => (
+          <span
+            className="text-200 text-muted-foreground"
+            title={String(row.lastSyncedFull ?? '')}
+          >
+            {String(value ?? '')}
+          </span>
         ),
       },
+      { id: 'lastSyncedFull', header: 'Last synced (full)', hidden: true },
     ],
     []
   );
@@ -149,10 +200,9 @@ export function InventoryView({
         itemType: safeText(artifact.itemType),
         workspaceName: safeText(artifact.workspaceName),
         scheduleCount: artifact.scheduleCount,
-        disabledCount: (
-          schedulesByArtifact.get(artifact.id) ?? []
-        ).filter((schedule) => !schedule.enabled).length,
-        lastSynced: formatTimestamp(artifact.lastSyncedAt),
+        disabledCount: disabledCount(schedulesByArtifact.get(artifact.id)),
+        lastSynced: formatRelativeTime(artifact.lastSyncedAt),
+        lastSyncedFull: formatTimestamp(artifact.lastSyncedAt),
       })),
     [visibleArtifacts, schedulesByArtifact]
   );
@@ -176,160 +226,263 @@ export function InventoryView({
       />
     );
 
-  const hasFilters = workspaceFilter !== '' || typeFilter !== '' || schedulesOnly;
+  const filtersChanged = !isDefaultFilters(filters);
   const totals = computeTotals(artifacts, schedulesByArtifact);
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
 
   return (
     <main className="px-500 py-500">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-500">
-        <header className="border-border bg-card overflow-hidden rounded-2xl border shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-400 p-500">
-            <div>
-              <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
-                Schedule inventory
-              </p>
-              <h1 className="font-heading text-hero-800 mt-100 font-semibold tracking-tight">
-                Artifact schedules
-              </h1>
-              <p className="text-300 mt-100 text-muted-foreground">
-                Cadence, time zone, owner and state of every schedule on file
-              </p>
-            </div>
-          </div>
-          <div className="border-border flex flex-wrap items-end gap-400 border-t px-500 py-400">
-            <FilterSelect
-              id="workspace-filter"
-              label="Workspace"
-              value={workspaceFilter}
-              onChange={setWorkspaceFilter}
-              options={workspaceOptions}
-            />
-            <FilterSelect
-              id="type-filter"
-              label="Item type"
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={typeOptions}
-            />
-            <label className="text-300 flex items-center gap-200 pb-200">
-              <input
-                type="checkbox"
-                className="accent-primary"
-                checked={schedulesOnly}
-                onChange={(event) => setSchedulesOnly(event.target.checked)}
-              />
-              Only artifacts with schedules
-            </label>
-            {hasFilters ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setWorkspaceFilter('');
-                  setTypeFilter('');
-                  setSchedulesOnly(false);
-                }}
-                className="text-primary text-300 focus-visible:ring-ring pb-200 font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
-              >
-                Reset
-              </button>
-            ) : null}
-            <p className="text-200 ml-auto pb-200 tabular-nums text-muted-foreground">
-              Showing {formatNumber(visibleArtifacts.length)} of{' '}
-              {formatNumber(artifacts.length)} artifacts
+        <header className="animate-fade-up flex flex-wrap items-end justify-between gap-300">
+          <div>
+            <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
+              Schedule inventory
+            </p>
+            <h1 className="font-heading text-hero-800 mt-100 font-semibold tracking-tight">
+              Artifact schedules
+            </h1>
+            <p className="text-300 mt-100 text-muted-foreground">
+              Cadence, time zone, owner and state of every schedule on file
             </p>
           </div>
         </header>
 
         <InventorySummary totals={totals} lastRun={lastRun} />
 
-        <div className="grid items-start gap-400 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        {visibleArtifacts.length === 0 ? (
-          hasFilters ? (
-            <EmptyState
-              title="No artifacts match the current filters"
-              hint="Clear the workspace or type filter to see everything."
-            />
-          ) : (
-            <EmptyState
-              title="No schedulable artifacts on file"
-              hint="Run a sync from the home page to populate the inventory."
-            />
-          )
-        ) : (
-          <div
-            className="border-border bg-card overflow-hidden rounded-2xl border shadow-sm"
-            data-testid="inventory-grid"
-          >
-            <DataGrid
-              columns={columns}
-              data={rows}
-              theme={theme}
-              pageSize={20}
-              rowHeight={44}
-              defaultSort={[{ columnId: 'scheduleCount', direction: 'desc' }]}
-              onInteraction={(events: InteractionEvent[]) => {
-                const select = events.find(
-                  (event) => event.action === 'select'
-                );
-                if (select?.selections.length === 1) {
-                  // Selection predicates carry the row's visible cell values;
-                  // resolve them back to the artifact they identify.
-                  const values = new Map<string, unknown>();
-                  for (const predicate of select.selections[0].predicates) {
-                    if (predicate.type === 'set')
-                      values.set(predicate.name, predicate.values[0]);
-                  }
-                  const displayName = values.get('displayName');
-                  const workspaceName = values.get('workspaceName');
-                  const match = visibleArtifacts.find(
-                    (artifact) =>
-                      safeText(artifact.displayName) === displayName &&
-                      safeText(artifact.workspaceName) === workspaceName
-                  );
-                  if (match) {
-                    setSelectedId(match.id);
-                    return;
-                  }
-                }
-                // A clear event (second click on the same row) deselects.
-                setSelectedId(null);
-              }}
-            />
+        <section
+          aria-label="Filters"
+          className="border-border bg-card animate-fade-up flex flex-wrap items-end gap-300 rounded-2xl border p-400 shadow-sm [animation-delay:240ms]"
+        >
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-100">
+            <label
+              htmlFor="artifact-search"
+              className="text-200 text-muted-foreground"
+            >
+              Search
+            </label>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="icon-size-200 pointer-events-none absolute top-1/2 left-300 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                id="artifact-search"
+                type="search"
+                placeholder="Artifact name…"
+                value={filters.query}
+                onChange={(event) => updateFilter('query', event.target.value)}
+                className={cn(CONTROL_CLASS, 'w-full pr-800 pl-800')}
+              />
+              {filters.query !== '' ? (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => updateFilter('query', '')}
+                  className={cn(
+                    'hover:bg-accent animate-fade-in absolute top-1/2 right-100 inline-flex h-600 w-600 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground',
+                    FOCUS
+                  )}
+                >
+                  <X aria-hidden="true" className="icon-size-200" />
+                </button>
+              ) : null}
+            </div>
           </div>
-        )}
-
-        {selected ? (
-          <section
-            className="border-border bg-card rounded-2xl border p-500 shadow-sm"
-            aria-label="Schedule detail"
-          >
-            <p className="text-100 text-primary font-semibold uppercase tracking-widest">
-              Schedule detail
-            </p>
-            <h2 className="font-heading text-500 mt-100 font-semibold">
-              {safeText(selected.displayName)}
-            </h2>
-            <p className="text-200 text-muted-foreground mb-400">
-              {safeText(selected.workspaceName)} ·{' '}
-              {safeText(selected.itemType)} · job types probed:{' '}
-              {safeText(selected.jobTypesProbed)}
-            </p>
-            {selectedSchedules.length === 0 ? (
-              <p className="text-300 text-muted-foreground">
-                No schedules found for this artifact.
-              </p>
-            ) : (
-              <ScheduleDetail schedules={selectedSchedules} />
+          <FilterSelect
+            id="workspace-filter"
+            label="Workspace"
+            value={filters.workspace}
+            onChange={(value) => updateFilter('workspace', value)}
+            options={workspaceOptions}
+          />
+          <FilterSelect
+            id="type-filter"
+            label="Item type"
+            value={filters.type}
+            onChange={(value) => updateFilter('type', value)}
+            options={typeOptions}
+          />
+          <button
+            type="button"
+            aria-pressed={filters.schedulesOnly}
+            onClick={() => updateFilter('schedulesOnly', !filters.schedulesOnly)}
+            className={cn(
+              SECONDARY_BUTTON,
+              filters.schedulesOnly &&
+                'border-primary bg-primary/10 text-primary hover:bg-primary/15'
             )}
-          </section>
-        ) : (
-          <p className="text-200 border-border bg-card rounded-2xl border border-dashed px-500 py-600 text-center text-muted-foreground">
-            Select a row to see its schedule details.
+          >
+            <CalendarCheck aria-hidden="true" className="icon-size-200" />
+            With schedules only
+          </button>
+          {filtersChanged ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className={cn(
+                'text-primary text-300 hover:bg-primary/10 animate-fade-in inline-flex h-800 items-center gap-100 rounded-lg px-300 font-medium',
+                FOCUS
+              )}
+            >
+              <X aria-hidden="true" className="icon-size-200" />
+              Clear filters
+            </button>
+          ) : null}
+          <p
+            className="text-200 ml-auto flex h-800 items-center tabular-nums text-muted-foreground"
+            aria-live="polite"
+          >
+            <span className="font-semibold text-foreground">
+              {formatNumber(visibleArtifacts.length)}
+            </span>
+            &nbsp;of {formatNumber(artifacts.length)} artifacts
           </p>
-        )}
+        </section>
+
+        <div className="grid items-start gap-400 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          {visibleArtifacts.length === 0 ? (
+            filtersChanged || filters.schedulesOnly ? (
+              <EmptyState
+                title="No artifacts match the current filters"
+                hint="Adjust the search or filters to see more artifacts."
+                action={
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFilters({ ...DEFAULT_FILTERS, schedulesOnly: false })
+                    }
+                    className={SECONDARY_BUTTON}
+                  >
+                    <X aria-hidden="true" className="icon-size-200" />
+                    Show all artifacts
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No schedulable artifacts on file"
+                hint="Run a sync to populate the inventory."
+              />
+            )
+          ) : (
+            <div
+              className="border-border bg-card animate-fade-up overflow-hidden rounded-2xl border shadow-sm [animation-delay:320ms]"
+              data-testid="inventory-grid"
+            >
+              <DataGrid
+                columns={columns}
+                data={rows}
+                theme={theme}
+                pageSize={20}
+                rowHeight={44}
+                defaultSort={[{ columnId: 'scheduleCount', direction: 'desc' }]}
+                onInteraction={(events: InteractionEvent[]) => {
+                  const select = events.find(
+                    (event) => event.action === 'select'
+                  );
+                  if (select?.selections.length === 1) {
+                    // Selection predicates carry the row's visible cell values;
+                    // resolve them back to the artifact they identify.
+                    const values = new Map<string, unknown>();
+                    for (const predicate of select.selections[0].predicates) {
+                      if (predicate.type === 'set')
+                        values.set(predicate.name, predicate.values[0]);
+                    }
+                    const displayName = values.get('displayName');
+                    const workspaceName = values.get('workspaceName');
+                    const match = visibleArtifacts.find(
+                      (artifact) =>
+                        safeText(artifact.displayName) === displayName &&
+                        safeText(artifact.workspaceName) === workspaceName
+                    );
+                    if (match) {
+                      setSelectedId(match.id);
+                      return;
+                    }
+                  }
+                  // A clear event (second click on the same row) deselects.
+                  setSelectedId(null);
+                }}
+              />
+            </div>
+          )}
+
+          {selected ? (
+            <section
+              key={selected.id}
+              className="border-border bg-card animate-slide-in rounded-2xl border p-500 shadow-sm lg:sticky lg:top-400"
+              aria-label="Schedule detail"
+            >
+              <div className="flex items-start justify-between gap-300">
+                <div className="min-w-0">
+                  <p className="text-100 text-primary font-semibold uppercase tracking-widest">
+                    Schedule detail
+                  </p>
+                  <h2 className="font-heading text-500 mt-100 font-semibold break-words">
+                    {safeText(selected.displayName)}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close detail"
+                  onClick={() => setSelectedId(null)}
+                  className={cn(
+                    'hover:bg-accent inline-flex h-700 w-700 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,rotate] duration-200 hover:rotate-90',
+                    FOCUS
+                  )}
+                >
+                  <X aria-hidden="true" className="icon-size-200" />
+                </button>
+              </div>
+              <div className="mt-200 flex flex-wrap items-center gap-200">
+                <TypeBadge value={safeText(selected.itemType)} />
+                <span className="text-200 inline-flex items-center gap-100 text-muted-foreground">
+                  <Folder aria-hidden="true" className="icon-size-100" />
+                  {safeText(selected.workspaceName)}
+                </span>
+              </div>
+              <p className="text-200 mt-200 text-muted-foreground">
+                {formatNumber(selectedSchedules.length)} schedule
+                {selectedSchedules.length === 1 ? '' : 's'} ·{' '}
+                {formatNumber(disabledCount(selectedSchedules))} disabled · job
+                types probed: {safeText(selected.jobTypesProbed)}
+              </p>
+              <div className="border-border mt-400 border-t pt-400">
+                {selectedSchedules.length === 0 ? (
+                  <p className="text-300 text-muted-foreground">
+                    No schedules found for this artifact.
+                  </p>
+                ) : (
+                  <ScheduleDetail schedules={selectedSchedules} />
+                )}
+              </div>
+            </section>
+          ) : (
+            <div className="border-border bg-card animate-fade-in flex flex-col items-center gap-200 rounded-2xl border border-dashed px-500 py-800 text-center lg:sticky lg:top-400">
+              <MousePointerClick
+                aria-hidden="true"
+                className="icon-size-400 animate-bounce text-muted-foreground [animation-iteration-count:3]"
+              />
+              <p className="text-300 font-medium">No artifact selected</p>
+              <p className="text-200 text-muted-foreground">
+                Select a row to see its schedules.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </main>
+  );
+}
+
+function TypeBadge({ value }: { value: string }) {
+  return (
+    <span
+      className="bg-muted text-200 inline-flex max-w-full items-center truncate rounded-md px-200 py-100 font-medium"
+      title={value}
+    >
+      {value}
+    </span>
   );
 }
 
@@ -344,10 +497,10 @@ function FilterSelect({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: readonly string[];
+  options: readonly { value: string; count: number }[];
 }) {
   return (
-    <div className="flex flex-col gap-100">
+    <div className="flex min-w-0 flex-col gap-100">
       <label htmlFor={id} className="text-200 text-muted-foreground">
         {label}
       </label>
@@ -355,17 +508,21 @@ function FilterSelect({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL_CLASS}
+        className={cn(CONTROL_CLASS, 'max-w-64')}
       >
         <option value="">All</option>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {safeText(option)}
+          <option key={option.value} value={option.value}>
+            {`${option.value} (${formatNumber(option.count)})`}
           </option>
         ))}
       </select>
     </div>
   );
+}
+
+function disabledCount(schedules: readonly ScheduleRecord[] | undefined) {
+  return (schedules ?? []).filter((schedule) => !schedule.enabled).length;
 }
 
 /** Rows may predate optional fields; never interpolate raw values. */

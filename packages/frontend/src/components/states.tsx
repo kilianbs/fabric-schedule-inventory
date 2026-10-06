@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TriangleAlert } from 'lucide-react';
 
 /**
  * The states every data-backed list has to handle, in one place.
@@ -14,7 +15,7 @@ import type { ReactNode } from 'react';
 export function LoadingState({ rows = 3 }: { readonly rows?: number }) {
   return (
     <div
-      className="space-y-2"
+      className="flex flex-col gap-200"
       role="status"
       aria-busy="true"
       aria-label="Loading"
@@ -22,7 +23,7 @@ export function LoadingState({ rows = 3 }: { readonly rows?: number }) {
       {Array.from({ length: rows }, (_, i) => (
         <div
           key={i}
-          className="h-14 animate-pulse rounded-lg bg-black/5 dark:bg-white/10"
+          className="bg-muted h-800 animate-pulse rounded-xl"
         />
       ))}
     </div>
@@ -38,10 +39,10 @@ export interface EmptyStateProps {
 
 export function EmptyState({ title, hint, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-black/15 px-6 py-12 text-center dark:border-white/20">
-      <p className="text-base font-semibold">{title}</p>
-      {hint ? <p className="max-w-sm text-sm opacity-70">{hint}</p> : null}
-      {action ? <div className="mt-2">{action}</div> : null}
+    <div className="border-border bg-card animate-fade-up flex flex-col items-center gap-200 rounded-2xl border border-dashed px-600 py-800 text-center">
+      <p className="text-400 font-semibold">{title}</p>
+      {hint ? <p className="text-300 max-w-sm text-muted-foreground">{hint}</p> : null}
+      {action ? <div className="mt-200">{action}</div> : null}
     </div>
   );
 }
@@ -55,20 +56,21 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 rounded-lg border border-red-400/60 bg-red-50 px-4 py-3 text-red-900 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-100"
+      className="border-destructive/40 bg-destructive/10 text-foreground animate-fade-up flex items-start gap-300 rounded-xl border px-400 py-300"
     >
-      <span aria-hidden="true" className="mt-0.5">
-        ⚠️
-      </span>
-      <div className="min-w-0 flex-1 text-sm">
+      <TriangleAlert
+        aria-hidden="true"
+        className="text-destructive icon-size-200 mt-100 shrink-0"
+      />
+      <div className="text-300 min-w-0 flex-1">
         <p className="font-semibold">That didn't work</p>
-        <p className="mt-0.5 opacity-90">{message}</p>
+        <p className="mt-100 text-muted-foreground">{message}</p>
       </div>
       {onRetry ? (
         <button
           type="button"
           onClick={onRetry}
-          className="shrink-0 rounded px-2 py-1 text-xs font-medium underline underline-offset-2"
+          className="text-200 focus-visible:ring-ring shrink-0 rounded-md px-200 py-100 font-medium underline underline-offset-2 focus-visible:ring-2 focus-visible:outline-none"
         >
           Try again
         </button>

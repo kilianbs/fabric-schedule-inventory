@@ -27,6 +27,32 @@ export function formatTimestamp(value: Date | string | undefined): string {
   }).format(date);
 }
 
+const RELATIVE_UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 365 * 24 * 60 * 60],
+  ['month', 30 * 24 * 60 * 60],
+  ['week', 7 * 24 * 60 * 60],
+  ['day', 24 * 60 * 60],
+  ['hour', 60 * 60],
+  ['minute', 60],
+];
+
+/** "3 hours ago" style text; pair it with `formatTimestamp` in a title. */
+export function formatRelativeTime(
+  value: Date | string | undefined,
+  now: Date = new Date()
+): string {
+  if (value === undefined) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  const seconds = Math.round((date.getTime() - now.getTime()) / 1000);
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  for (const [unit, size] of RELATIVE_UNITS) {
+    if (Math.abs(seconds) >= size)
+      return format.format(Math.round(seconds / size), unit);
+  }
+  return format.format(0, 'minute');
+}
+
 /** Group digits with the viewer's locale so large figures stay readable. */
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value);

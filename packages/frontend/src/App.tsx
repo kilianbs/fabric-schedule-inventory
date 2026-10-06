@@ -242,7 +242,6 @@ function App() {
             artifactCount={inventory.artifacts.length}
             isSyncing={isRunning}
             onSync={() => void startSync()}
-            onRefresh={() => void loadInventory()}
           >
             {route === 'about' ? (
               <About lastRun={lastRun} />

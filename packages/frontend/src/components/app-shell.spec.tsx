@@ -51,7 +51,6 @@ describe('AppShell', () => {
         artifactCount={0}
         isSyncing={false}
         onSync={overrides.onSync ?? vi.fn()}
-        onRefresh={vi.fn()}
       >
         <p>content</p>
       </AppShell>
@@ -77,5 +76,10 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
     expect(onSync).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: /mode/i })).toBeNull();
+  });
+
+  it('has no refresh action in the top bar', () => {
+    renderShell();
+    expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
   });
 });

@@ -9,12 +9,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type {
   ArtifactRecord,
+  JobRunRecord,
   ScheduleRecord,
   SyncRunRecord,
 } from '@rayfin-app/shared';
 
 import { About } from '@/components/about.component';
 import { AppShell } from '@/components/app-shell.component';
+import { GanttView } from '@/components/gantt-view.component';
 import { Home } from '@/components/home.component';
 import { InventoryView } from '@/components/inventory-view.component';
 import { ErrorState } from '@/components/states';
@@ -78,6 +80,21 @@ const RUN_FIELDS = [
   'errorSummary',
 ] as const;
 
+const JOB_RUN_FIELDS = [
+  'id',
+  'artifactRowId',
+  'jobType',
+  'status',
+  'startTimeUtc',
+  'endTimeUtc',
+  'durationSeconds',
+] as const;
+
+type JobRunsState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; runs: JobRunRecord[] };
+
 type InventoryState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
@@ -99,6 +116,34 @@ function App() {
   const [lastRun, setLastRun] = useState<SyncRunRecord | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [route, navigate] = useHashRoute();
+  const [jobRuns, setJobRuns] = useState<JobRunsState>({ kind: 'loading' });
+  const needsJobRuns = route === 'gantt';
+
+  // Job runs are only needed by the Gantt page, so they load lazily (on first
+  // visit and after each sync) instead of slowing the inventory view.
+  useEffect(() => {
+    if (!needsJobRuns) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const client = await getRayfinClient();
+        const runs = await pageAllJobRuns(client);
+        if (!cancelled) setJobRuns({ kind: 'ready', runs });
+      } catch (error) {
+        if (cancelled) return;
+        setJobRuns({
+          kind: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Job run history could not be loaded.',
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsJobRuns, reloadToken]);
 
   const loadInventory = useCallback(async () => {
     try {
@@ -188,6 +233,34 @@ function App() {
     setReloadToken((token) => token + 1);
   });
 
+  const renderRoute = () => {
+    if (inventory.kind !== 'ready') return null;
+    switch (route) {
+      case 'about':
+        return <About lastRun={lastRun} />;
+      case 'gantt':
+        return (
+          <GanttView
+            status={jobRuns.kind}
+            errorMessage={jobRuns.kind === 'error' ? jobRuns.message : undefined}
+            artifacts={inventory.artifacts}
+            schedulesByArtifact={inventory.schedules}
+            runs={jobRuns.kind === 'ready' ? jobRuns.runs : []}
+          />
+        );
+      default:
+        return (
+          <InventoryView
+            status="ready"
+            artifacts={inventory.artifacts}
+            schedulesByArtifact={inventory.schedules}
+            lastRun={lastRun}
+            onRetry={() => void loadInventory()}
+          />
+        );
+    }
+  };
+
   const isRunning = phase.kind === 'running';
   const hasData =
     inventory.kind === 'ready' && inventory.artifacts.length > 0;
@@ -203,7 +276,7 @@ function App() {
             aria-hidden="true"
             className="h-100 w-100 animate-pulse rounded-full bg-current"
           />
-          Scanning workspaces for schedulable artifacts…
+          Scanning workspaces for scheduled artifacts…
         </div>
       ) : null}
 
@@ -243,17 +316,7 @@ function App() {
             isSyncing={isRunning}
             onSync={() => void startSync()}
           >
-            {route === 'about' ? (
-              <About lastRun={lastRun} />
-            ) : (
-              <InventoryView
-                status="ready"
-                artifacts={inventory.artifacts}
-                schedulesByArtifact={inventory.schedules}
-                lastRun={lastRun}
-                onRetry={() => void loadInventory()}
-              />
-            )}
+            {renderRoute()}
           </AppShell>
         </>
       ) : null}
@@ -301,6 +364,26 @@ async function pageAllSchedules(
     cursor = page.endCursor;
   }
   return schedules;
+}
+
+async function pageAllJobRuns(
+  client: Awaited<ReturnType<typeof getRayfinClient>>
+): Promise<JobRunRecord[]> {
+  const runs: JobRunRecord[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const queryBase = client.data.JobRun.select([...JOB_RUN_FIELDS])
+      .orderBy({ artifactRowId: 'asc' })
+      .first(100);
+    const page =
+      cursor === undefined
+        ? await queryBase.executePaginated()
+        : await queryBase.after(cursor).executePaginated();
+    runs.push(...page.items);
+    if (!page.hasNextPage || page.endCursor === undefined) break;
+    cursor = page.endCursor;
+  }
+  return runs;
 }
 
 export default App;

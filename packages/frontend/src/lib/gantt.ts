@@ -311,3 +311,18 @@ export function buildGantt(input: GanttInput): GanttModel {
 
   return { groups, skipped, timeZones: Array.from(zones).sort() };
 }
+
+export function formatClock(minute: number): string {
+  const hours = Math.floor(minute / 60);
+  const minutes = Math.floor(minute % 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export function formatDuration(seconds: number | null): string {
+  if (seconds === null) return 'no history';
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const rest = minutes % 60;
+  return rest === 0 ? `${minutes / 60} h` : `${Math.floor(minutes / 60)} h ${rest} min`;
+}

@@ -6,12 +6,13 @@
 //-----------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
-import { Info, LayoutDashboard, RefreshCw } from 'lucide-react';
+import { ChartGantt, Info, LayoutDashboard, RefreshCw } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { SyncRunRecord } from '@rayfin-app/shared';
 
 import { FabricAppMark } from '@/FabricAppMark';
+import { routeHref } from '@/hooks/use-hash-route';
 import type { AppRoute } from '@/hooks/use-hash-route';
 import { cn, formatNumber, formatTimestamp } from '@/lib/utils';
 
@@ -24,7 +25,10 @@ interface NavItem {
 const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }[] = [
   {
     title: 'Explore',
-    items: [{ route: 'inventory', label: 'Inventory', icon: LayoutDashboard }],
+    items: [
+      { route: 'inventory', label: 'Inventory', icon: LayoutDashboard },
+      { route: 'gantt', label: 'Gantt', icon: ChartGantt },
+    ],
   },
   {
     title: 'System',
@@ -34,6 +38,7 @@ const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }[] = [
 
 const PAGE_TITLES: Record<AppRoute, string> = {
   inventory: 'Inventory',
+  gantt: 'Gantt',
   about: 'About',
 };
 
@@ -96,7 +101,7 @@ export function AppShell({
                 return (
                   <a
                     key={target}
-                    href={target === 'about' ? '#/about' : '#/'}
+                    href={routeHref(target)}
                     aria-current={active ? 'page' : undefined}
                     onClick={(event) => {
                       event.preventDefault();
@@ -131,7 +136,7 @@ export function AppShell({
               aria-hidden="true"
               className="bg-primary h-100 w-100 rounded-full"
             />
-            {formatNumber(artifactCount)} schedulable artifact
+            {formatNumber(artifactCount)} scheduled artifact
             {artifactCount === 1 ? '' : 's'}
           </p>
           <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">

@@ -13,6 +13,7 @@ describe('parseRoute', () => {
     expect(parseRoute('#/')).toBe('inventory');
     expect(parseRoute('#/about')).toBe('about');
     expect(parseRoute('#about')).toBe('about');
+    expect(parseRoute('#/gantt')).toBe('gantt');
     expect(parseRoute('#/unknown')).toBe('inventory');
   });
 });
@@ -68,6 +69,15 @@ describe('AppShell', () => {
     );
     fireEvent.click(screen.getByRole('link', { name: 'About' }));
     expect(onNavigate).toHaveBeenCalledWith('about');
+  });
+
+  it('links to the Gantt page', () => {
+    const onNavigate = vi.fn();
+    renderShell({ onNavigate });
+    const link = screen.getByRole('link', { name: 'Gantt' });
+    expect(link).toHaveAttribute('href', '#/gantt');
+    fireEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledWith('gantt');
   });
 
   it('offers sync in the top bar and no theme toggle', () => {

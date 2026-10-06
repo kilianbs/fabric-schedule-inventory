@@ -18,6 +18,57 @@ Each stored artifact keeps its schedules, its capacity (id and, when it can be r
 
 Job runs are stored in the `JobRun` entity at sync time because the Fabric token only exists inside the function; the page loads them lazily when the Gantt route opens.
 
+## Getting started from scratch
+
+1. **Prerequisites**
+   - Node.js 20, 22 or 24, and npm.
+   - A Microsoft account with access to the Fabric workspace where the app will be deployed.
+   - Azure Functions Core Tools, needed locally to run `syncInventory` (installed in step 4).
+2. **Clone and install** (from the repository root only; do not run `npm install` inside a package):
+
+   ```sh
+   git clone <repository-url>
+   cd fabric-schedule-inventory
+   npm install
+   ```
+
+3. **Sign in** with the Rayfin CLI (local development uses this session):
+
+   ```sh
+   npx rayfin login
+   ```
+
+4. **Install Azure Functions Core Tools** once (it asks for consent before installing):
+
+   ```sh
+   npx rayfin dev functions apply
+   ```
+
+5. **Run locally**:
+
+   ```sh
+   npm run dev
+   ```
+
+   Open <http://localhost:5173>. The inventory is empty until the first sync: press the sync button and wait for the scan to finish. The first sync also reads the last runs of every scheduled artifact, so it takes longer than later ones. Then open the **Gantt** page.
+   `npm run dev:frontend` starts only Vite, which is enough to look at the UI but cannot run a sync.
+6. **Check the workspace** (run these one after another, never `typecheck` and `build` at the same time):
+
+   ```sh
+   npm run typecheck
+   npm run build
+   npm run lint
+   npm test
+   ```
+
+7. **Deploy to Fabric**. This writes to a remote workspace, so confirm the target workspace first:
+
+   ```sh
+   npm run rayfin:up
+   ```
+
+   Open the URL it returns, sign in, press sync once, and the inventory and Gantt fill with real data.
+
 ## Workspace layout
 
 The application is an npm workspace with one control root and three base packages:

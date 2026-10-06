@@ -7,8 +7,10 @@ import type { UniversalAppSchema } from '@rayfin-app/shared';
 
 import {
   type FabricCapacity,
+  type FinishedJobRun,
   isSchedulableType,
   listAll,
+  listItemJobInstances,
   listItemSchedules,
   mapWithConcurrency,
   SCHEDULABLE_ITEM_TYPES,
@@ -43,6 +45,8 @@ interface ArtifactObservation {
   item: FabricItem;
   schedulesByJobType: Map<string, FabricItemSchedule[]>;
   jobTypesProbed: readonly string[];
+  /** Latest finished runs; filled after the schedule scan. */
+  runs?: readonly FinishedJobRun[];
 }
 
 /**
@@ -188,10 +192,27 @@ async function runSyncInventory(
       });
     }
 
-    // Persist observations: upsert artifacts, replace their schedules.
+    // Recent finished job runs for scheduled artifacts only. Probe failures
+    // degrade to "no runs"; they never fail the sync.
     await reportProgress('persist', 65, {
       workspacesProcessed: workspacesTotal,
     });
+    let runsFetched = 0;
+    await mapWithConcurrency(observations, PROBE_CONCURRENCY, async (obs) => {
+      const probe = await listItemJobInstances(
+        obs.workspace.id,
+        obs.item.id,
+        token
+      );
+      obs.runs = probe.runs;
+      runsFetched++;
+      await reportProgress(
+        'persist',
+        65 + (runsFetched / Math.max(1, observations.length)) * 10
+      );
+    });
+
+    // Persist observations: upsert artifacts, replace their schedules and runs.
     const existingByWorkspaceItem = new Map<
       string,
       { id: string; present: boolean }
@@ -230,7 +251,7 @@ async function runSyncInventory(
     for (const observation of observations) {
       await reportProgress(
         'persist',
-        65 + (artifactsFound / Math.max(1, observations.length)) * 25
+        75 + (artifactsFound / Math.max(1, observations.length)) * 15
       );
       const { workspace, item, schedulesByJobType, jobTypesProbed } =
         observation;
@@ -291,6 +312,33 @@ async function runSyncInventory(
           );
         }
       }
+      // Job runs follow the same replace-per-artifact pattern. A failed write
+      // costs this artifact its run history for one sync, not the sync.
+      try {
+        const staleRuns = await data.JobRun.findMany({
+          artifactRowId: { eq: artifactId },
+        });
+        for (const stale of staleRuns) {
+          await data.JobRun.delete({ id: stale.id });
+        }
+        for (const jobRun of observation.runs ?? []) {
+          await data.JobRun.create({
+            artifactRowId: artifactId.slice(0, 100),
+            workspaceId: workspaceId.slice(0, 100),
+            itemId: itemId.slice(0, 100),
+            jobType: (jobRun.jobType || '').slice(0, 100),
+            jobInstanceId: jobRun.jobInstanceId.slice(0, 100),
+            invokeType: jobRun.invokeType.slice(0, 50),
+            status: jobRun.status,
+            startTimeUtc: jobRun.startTimeUtc.slice(0, 50),
+            endTimeUtc: jobRun.endTimeUtc.slice(0, 50),
+            durationSeconds: jobRun.durationSeconds,
+            lastSyncedAt: new Date(),
+          });
+        }
+      } catch {
+        recordError(`Artifact ${itemId}: could not store job runs.`);
+      }
       artifactsFound++;
       schedulesFound += allSchedules.length;
     }
@@ -318,6 +366,12 @@ async function runSyncInventory(
         });
         for (const stale of staleSchedules) {
           await data.Schedule.delete({ id: stale.id });
+        }
+        const staleRuns = await data.JobRun.findMany({
+          artifactRowId: { eq: existing.id },
+        });
+        for (const stale of staleRuns) {
+          await data.JobRun.delete({ id: stale.id });
         }
         await data.Artifact.delete({ id: existing.id });
       } catch {

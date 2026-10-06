@@ -263,6 +263,89 @@ export async function listItemSchedules(
   return { schedules: call.value };
 }
 
+/** Latest finished runs kept per artifact. */
+export const MAX_JOB_RUNS_PER_ITEM = 20;
+
+export interface FabricJobInstance {
+  id: string;
+  itemId?: string;
+  jobType?: string;
+  invokeType?: string;
+  status?: string;
+  startTimeUtc?: string;
+  endTimeUtc?: string;
+}
+
+/** A finished run with both timestamps and its computed duration. */
+export interface FinishedJobRun {
+  jobInstanceId: string;
+  jobType: string;
+  invokeType: string;
+  status: 'Completed' | 'Failed';
+  startTimeUtc: string;
+  endTimeUtc: string;
+  durationSeconds: number;
+}
+
+/** Fabric timestamps are UTC but may lack the trailing `Z`/offset. */
+function parseUtc(value: string): number {
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(value) ? value : `${value}Z`);
+}
+
+/**
+ * Keep only Completed/Failed runs that have both timestamps, newest first,
+ * capped at {@link MAX_JOB_RUNS_PER_ITEM}. Fabric guarantees no ordering.
+ */
+export function selectFinishedRuns(
+  instances: readonly FabricJobInstance[]
+): FinishedJobRun[] {
+  const runs: FinishedJobRun[] = [];
+  for (const instance of instances) {
+    const { status, startTimeUtc, endTimeUtc } = instance;
+    if (
+      typeof instance?.id !== 'string' ||
+      (status !== 'Completed' && status !== 'Failed') ||
+      typeof startTimeUtc !== 'string' ||
+      typeof endTimeUtc !== 'string'
+    ) {
+      continue;
+    }
+    const start = parseUtc(startTimeUtc);
+    const end = parseUtc(endTimeUtc);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
+    runs.push({
+      jobInstanceId: instance.id,
+      jobType: instance.jobType ?? '',
+      invokeType: instance.invokeType ?? '',
+      status,
+      startTimeUtc,
+      endTimeUtc,
+      durationSeconds: Math.round((end - start) / 1000),
+    });
+  }
+  runs.sort((a, b) => parseUtc(b.startTimeUtc) - parseUtc(a.startTimeUtc));
+  return runs.slice(0, MAX_JOB_RUNS_PER_ITEM);
+}
+
+/**
+ * Fetch the latest finished job runs for one item. Any failure degrades to
+ * "no runs" with a sanitized `probeError`, never failing the scan.
+ */
+export async function listItemJobInstances(
+  workspaceId: string,
+  itemId: string,
+  token: string
+): Promise<{ runs: FinishedJobRun[]; probeError?: FabricErrorKind }> {
+  const call = await listAll<FabricJobInstance>(
+    `/workspaces/${workspaceId}/items/${itemId}/jobs/instances`,
+    token
+  );
+  if (!call.ok) {
+    return { runs: [], probeError: call.error };
+  }
+  return { runs: selectFinishedRuns(call.value) };
+}
+
 /**
  * Process `items` through `worker` with at most `limit` in flight.
  * The returned array preserves input order. Workers must not throw — they

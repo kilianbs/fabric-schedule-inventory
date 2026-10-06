@@ -118,6 +118,7 @@ export interface GanttInput {
   weekday: number | string;
   groupBy: GroupBy;
   includeDisabled?: boolean;
+  filters?: GanttFilters;
   now?: Date;
 }
 
@@ -284,6 +285,68 @@ function summarizeGroup(
   return { key, label, nameUnavailable, rows, load, peak, overlapping };
 }
 
+/** Empty or missing selections mean "no filter". Capacity key '' = none. */
+export interface GanttFilters {
+  capacities?: readonly string[];
+  workspaces?: readonly string[];
+}
+
+export interface FilterOption {
+  key: string;
+  label: string;
+  count: number;
+  nameKnown: boolean;
+}
+
+export function filterArtifacts(
+  artifacts: readonly ArtifactRecord[],
+  filters: GanttFilters | undefined
+): ArtifactRecord[] {
+  const capacities = new Set(filters?.capacities);
+  const workspaces = new Set(filters?.workspaces);
+  return artifacts.filter(
+    (artifact) =>
+      (capacities.size === 0 || capacities.has(capacityInfo(artifact).key)) &&
+      (workspaces.size === 0 || workspaces.has(artifact.workspaceId))
+  );
+}
+
+function tally(
+  entries: Iterable<{ key: string; label: string; nameKnown: boolean }>
+): FilterOption[] {
+  const options = new Map<string, FilterOption>();
+  for (const entry of entries) {
+    const found = options.get(entry.key);
+    if (found) found.count += 1;
+    else options.set(entry.key, { ...entry, count: 1 });
+  }
+  return Array.from(options.values()).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
+}
+
+/**
+ * Filter options derived from the data. Capacity options always cover every
+ * artifact; workspace options narrow to the selected capacities.
+ */
+export function filterOptions(
+  artifacts: readonly ArtifactRecord[],
+  filters: GanttFilters | undefined
+): { capacities: FilterOption[]; workspaces: FilterOption[] } {
+  return {
+    capacities: tally(artifacts.map(capacityInfo)),
+    workspaces: tally(
+      filterArtifacts(artifacts, { capacities: filters?.capacities }).map(
+        (artifact) => ({
+          key: artifact.workspaceId,
+          label: artifact.workspaceName || artifact.workspaceId || 'Unknown',
+          nameKnown: true,
+        })
+      )
+    ),
+  };
+}
+
 export function buildGantt(input: GanttInput): GanttModel {
   const weekday = resolveWeekday(input.weekday);
   const now = input.now ?? new Date();
@@ -294,7 +357,7 @@ export function buildGantt(input: GanttInput): GanttModel {
     { label: string; nameUnavailable: boolean; rows: GanttRow[] }
   >();
 
-  for (const artifact of input.artifacts) {
+  for (const artifact of filterArtifacts(input.artifacts, input.filters)) {
     const duration = averageDuration(input.runs, artifact.id, input.runCount);
     const hasHistory = duration.seconds !== null;
     const durationMin =

@@ -122,6 +122,67 @@ describe('GanttView', () => {
     ).toBeInTheDocument();
   });
 
+  describe('filters', () => {
+    const openFilter = (name: RegExp) =>
+      fireEvent.click(screen.getByRole('button', { name }));
+
+    it('narrows rows, counts and peak by capacity, and clear restores', () => {
+      renderGantt();
+      expect(screen.getByText('3 of 3 artifacts')).toBeInTheDocument();
+      openFilter(/^Capacity/);
+      fireEvent.click(screen.getByRole('checkbox', { name: /Prod/ }));
+      expect(screen.getByText('2 of 3 artifacts')).toBeInTheDocument();
+      expect(screen.queryByText('Adhoc model')).toBeNull();
+      expect(screen.queryByRole('button', { name: /No capacity/ })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+      expect(screen.getByText('3 of 3 artifacts')).toBeInTheDocument();
+      expect(screen.getByText('Adhoc model')).toBeInTheDocument();
+    });
+
+    it('filters by workspace and recomputes the peak', () => {
+      renderGantt();
+      openFilter(/^Workspace/);
+      fireEvent.click(screen.getByRole('checkbox', { name: /Finance/ }));
+      expect(screen.getByText('1 of 3 artifacts')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Prod.*1 artifact · peak 1 at 08:00/ })
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Ops refresh')).toBeNull();
+    });
+
+    it('shows removable chips for active filters', () => {
+      renderGantt();
+      openFilter(/^Capacity/);
+      fireEvent.click(screen.getByRole('checkbox', { name: /Prod/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove filter Prod' }));
+      expect(screen.getByText('3 of 3 artifacts')).toBeInTheDocument();
+    });
+
+    it('shows a clear action when filters leave nothing to plot', () => {
+      renderGantt();
+      openFilter(/^Workspace/);
+      fireEvent.click(screen.getByRole('checkbox', { name: /Finance/ }));
+      openFilter(/^Capacity/);
+      fireEvent.click(screen.getByRole('checkbox', { name: /No capacity/ }));
+      expect(screen.getByText('No artifacts match the filters')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+      expect(screen.getByText('Sales load')).toBeInTheDocument();
+    });
+
+    it('is keyboard accessible: aria-expanded, Escape closes and refocuses', () => {
+      renderGantt();
+      const trigger = screen.getByRole('button', { name: /^Capacity/ });
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      fireEvent.keyDown(screen.getByRole('checkbox', { name: /Prod/ }), {
+        key: 'Escape',
+      });
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
+  });
+
   it('shows an empty state without scheduled artifacts', () => {
     renderGantt({ artifacts: [], schedulesByArtifact: new Map() });
     expect(screen.getByText('Nothing to plot for this day')).toBeInTheDocument();

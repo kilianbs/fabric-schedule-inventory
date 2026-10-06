@@ -11,6 +11,8 @@ import {
   buildGantt,
   capacityInfo,
   countUnresolvedCapacities,
+  filterArtifacts,
+  filterOptions,
   FALLBACK_DURATION_SECONDS,
   resolveWeekday,
 } from '@/lib/gantt';
@@ -334,6 +336,70 @@ describe('capacity labels', () => {
       label: 'Capacity abcdef01',
       nameUnavailable: true,
     });
+  });
+});
+
+describe('capacity and workspace filters', () => {
+  const artifacts = [
+    artifact('a1', { capacityId: 'cap-1', capacityName: 'Prod', workspaceId: 'w-fin', workspaceName: 'Finance' }),
+    artifact('a2', { capacityId: 'cap-1', capacityName: 'Prod', workspaceId: 'w-ops', workspaceName: 'Ops' }),
+    artifact('a3', { capacityId: 'cap-2', workspaceId: 'w-dev', workspaceName: 'Dev' }),
+    artifact('a4', { workspaceId: 'w-ops', workspaceName: 'Ops' }),
+  ];
+  const ids = (list: readonly ArtifactRecord[]) => list.map((a) => a.id);
+
+  it('treats an empty selection as no filter', () => {
+    expect(ids(filterArtifacts(artifacts, {}))).toEqual(['a1', 'a2', 'a3', 'a4']);
+    expect(
+      ids(filterArtifacts(artifacts, { capacities: [], workspaces: [] }))
+    ).toEqual(['a1', 'a2', 'a3', 'a4']);
+  });
+
+  it('keeps artifacts matching any selected capacity key, "" meaning none', () => {
+    expect(ids(filterArtifacts(artifacts, { capacities: ['cap-2', ''] }))).toEqual([
+      'a3',
+      'a4',
+    ]);
+  });
+
+  it('combines capacity and workspace filters with AND', () => {
+    expect(
+      ids(filterArtifacts(artifacts, { capacities: ['cap-1'], workspaces: ['w-ops'] }))
+    ).toEqual(['a2']);
+  });
+
+  it('derives options with counts, labels and narrowed workspaces', () => {
+    const all = filterOptions(artifacts, {});
+    expect(all.capacities).toEqual([
+      { key: 'cap-2', label: 'Capacity cap-2', count: 1, nameKnown: false },
+      { key: '', label: 'No capacity', count: 1, nameKnown: true },
+      { key: 'cap-1', label: 'Prod', count: 2, nameKnown: true },
+    ]);
+    expect(all.workspaces.map((o) => [o.label, o.count])).toEqual([
+      ['Dev', 1],
+      ['Finance', 1],
+      ['Ops', 2],
+    ]);
+    const narrowed = filterOptions(artifacts, { capacities: ['cap-1'] });
+    expect(narrowed.workspaces.map((o) => [o.key, o.count])).toEqual([
+      ['w-fin', 1],
+      ['w-ops', 1],
+    ]);
+    // Capacity options are never narrowed by the capacity selection itself.
+    expect(narrowed.capacities).toHaveLength(3);
+  });
+
+  it('applies filters before grouping and peak computation', () => {
+    const schedules = [
+      schedule('s1', 'a1', { timesJson: '["08:00"]' }),
+      schedule('s2', 'a2', { timesJson: '["08:00"]' }),
+    ];
+    const base = input(artifacts.slice(0, 2), schedules, { groupBy: 'capacity' });
+    expect(buildGantt(base).groups[0].peak.count).toBe(2);
+    const filtered = buildGantt({ ...base, filters: { workspaces: ['w-fin'] } });
+    expect(filtered.groups).toHaveLength(1);
+    expect(filtered.groups[0].peak.count).toBe(1);
+    expect(filtered.groups[0].rows.map((row) => row.artifact.id)).toEqual(['a1']);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, X } from 'lucide-react';
 
 import type {
   ArtifactRecord,
@@ -12,13 +12,22 @@ import {
   LABEL_COLUMN,
 } from '@/components/gantt-group.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
+import { GanttFilter } from '@/components/gantt-filter.component';
 import {
   buildGantt,
   countUnresolvedCapacities,
+  filterArtifacts,
+  filterOptions,
   WEEKDAY_NAMES,
 } from '@/lib/gantt';
 import type { GroupBy } from '@/lib/gantt';
-import { cn } from '@/lib/utils';
+import { cn, formatNumber } from '@/lib/utils';
+
+interface FilterChip {
+  kind: 'Capacity' | 'Workspace';
+  key: string;
+  label: string;
+}
 
 export interface GanttViewProps {
   status: 'loading' | 'error' | 'ready';
@@ -57,6 +66,11 @@ export function GanttView({
   const [includeDisabled, setIncludeDisabled] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
+  const [filters, setFilters] = useState<{
+    capacities: string[];
+    workspaces: string[];
+  }>({ capacities: [], workspaces: [] });
+
   const model = useMemo(
     () =>
       buildGantt({
@@ -67,9 +81,50 @@ export function GanttView({
         weekday,
         groupBy,
         includeDisabled,
+        filters,
       }),
-    [artifacts, schedulesByArtifact, runs, runCount, weekday, groupBy, includeDisabled]
+    [
+      artifacts,
+      schedulesByArtifact,
+      runs,
+      runCount,
+      weekday,
+      groupBy,
+      includeDisabled,
+      filters,
+    ]
   );
+  const options = useMemo(
+    () => filterOptions(artifacts, filters),
+    [artifacts, filters]
+  );
+  const allWorkspaces = useMemo(
+    () => filterOptions(artifacts, {}).workspaces,
+    [artifacts]
+  );
+  const filteredCount = useMemo(
+    () => filterArtifacts(artifacts, filters).length,
+    [artifacts, filters]
+  );
+  const chips: FilterChip[] = [
+    ...filters.capacities.map((key) => ({
+      kind: 'Capacity' as const,
+      key,
+      label: options.capacities.find((o) => o.key === key)?.label ?? key,
+    })),
+    ...filters.workspaces.map((key) => ({
+      kind: 'Workspace' as const,
+      key,
+      label: allWorkspaces.find((o) => o.key === key)?.label ?? key,
+    })),
+  ];
+  const clearFilters = () => setFilters({ capacities: [], workspaces: [] });
+  const removeChip = (chip: FilterChip) =>
+    setFilters((current) =>
+      chip.kind === 'Capacity'
+        ? { ...current, capacities: current.capacities.filter((k) => k !== chip.key) }
+        : { ...current, workspaces: current.workspaces.filter((k) => k !== chip.key) }
+    );
 
   const toggle = (key: string) =>
     setCollapsed((current) => {
@@ -171,6 +226,27 @@ export function GanttView({
               ))}
             </div>
           </div>
+          <div className="flex flex-col gap-100">
+            <span className="text-200 text-muted-foreground">Filter</span>
+            <div className="flex flex-wrap gap-200">
+              <GanttFilter
+                label="Capacity"
+                options={options.capacities}
+                selected={filters.capacities}
+                onChange={(capacities) =>
+                  setFilters((current) => ({ ...current, capacities }))
+                }
+              />
+              <GanttFilter
+                label="Workspace"
+                options={options.workspaces}
+                selected={filters.workspaces}
+                onChange={(workspaces) =>
+                  setFilters((current) => ({ ...current, workspaces }))
+                }
+              />
+            </div>
+          </div>
           <label className="text-300 flex h-800 items-center gap-200">
             <input
               type="checkbox"
@@ -181,6 +257,41 @@ export function GanttView({
             Include disabled schedules
           </label>
         </section>
+
+        <div className="text-300 flex flex-wrap items-center gap-200 text-muted-foreground">
+          <span>
+            {formatNumber(filteredCount)} of {formatNumber(artifacts.length)}{' '}
+            artifacts
+          </span>
+          {chips.map((chip) => (
+            <button
+              key={`${chip.kind}:${chip.key}`}
+              type="button"
+              aria-label={`Remove filter ${chip.label}`}
+              onClick={() => removeChip(chip)}
+              className={cn(
+                'border-border bg-card text-foreground text-200 hover:bg-accent flex items-center gap-100 rounded-full border py-100 pr-200 pl-300',
+                FOCUS
+              )}
+            >
+              <span className="text-muted-foreground">{chip.kind}:</span>
+              {chip.label}
+              <X aria-hidden="true" className="icon-size-200" />
+            </button>
+          ))}
+          {chips.length > 0 ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className={cn(
+                'text-200 rounded-md px-200 py-100 font-medium underline underline-offset-2',
+                FOCUS
+              )}
+            >
+              Clear all
+            </button>
+          ) : null}
+        </div>
 
         {status === 'loading' ? <LoadingState rows={6} /> : null}
         {status === 'error' ? (
@@ -213,7 +324,24 @@ export function GanttView({
                   : null,
               ]}
             />
-            {model.groups.length === 0 ? (
+            {model.groups.length === 0 && chips.length > 0 ? (
+              <EmptyState
+                title="No artifacts match the filters"
+                hint="Nothing scheduled on the selected day matches the active capacity and workspace filters."
+                action={
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className={cn(
+                      'border-input bg-background text-300 hover:bg-accent h-700 rounded-lg border px-400 font-medium',
+                      FOCUS
+                    )}
+                  >
+                    Clear filters
+                  </button>
+                }
+              />
+            ) : model.groups.length === 0 ? (
               <EmptyState
                 title="Nothing to plot for this day"
                 hint="No scheduled artifacts run on the selected day. Pick another day, include disabled schedules, or run a sync."

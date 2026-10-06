@@ -14,7 +14,12 @@ import {
   filterArtifacts,
   filterOptions,
   FALLBACK_DURATION_SECONDS,
+  formatBarRange,
+  itemTypeSlot,
   resolveWeekday,
+  runningIn,
+  runSummary,
+  SERIES_COUNT,
 } from '@/lib/gantt';
 import type { GanttInput } from '@/lib/gantt';
 
@@ -400,6 +405,73 @@ describe('capacity and workspace filters', () => {
     expect(filtered.groups).toHaveLength(1);
     expect(filtered.groups[0].peak.count).toBe(1);
     expect(filtered.groups[0].rows.map((row) => row.artifact.id)).toEqual(['a1']);
+  });
+});
+
+describe('tooltip data', () => {
+  const runs = [
+    { ...run('a1', '2026-10-01T08:00:00', 600), status: 'Completed' },
+    { ...run('a1', '2026-10-02T08:00:00', 1800), status: 'Completed' },
+    { ...run('a1', '2026-10-03T08:00:00'), status: 'Failed' },
+  ];
+
+  it('summarizes min/max of the last N runs and the latest run', () => {
+    expect(runSummary(runs, 'a1', 5)).toEqual({
+      minDurationSeconds: 600,
+      maxDurationSeconds: 1800,
+      lastRun: { status: 'Failed', startTimeUtc: '2026-10-03T08:00:00' },
+    });
+    expect(runSummary(runs, 'zzz', 5)).toEqual({
+      minDurationSeconds: null,
+      maxDurationSeconds: null,
+      lastRun: null,
+    });
+  });
+
+  it('exposes drawn schedules and the run summary on each row', () => {
+    const row = firstRow(
+      buildGantt(input([artifact('a1')], [schedule('s1', 'a1')], { runs }))
+    );
+    expect(row.schedules.map((s) => s.id)).toEqual(['s1']);
+    expect(row.lastRun?.status).toBe('Failed');
+    expect(row.maxDurationSeconds).toBe(1800);
+  });
+
+  it('keeps the scheduled start on both segments of a wrapped bar', () => {
+    const wrapped = buildGantt(
+      input(
+        [artifact('a1')],
+        [schedule('s1', 'a1', { timesJson: '["23:00"]' })],
+        { runs: [run('a1', '2026-10-01T23:00:00', 7200)] }
+      )
+    );
+    expect(firstRow(wrapped).bars.map((bar) => bar.runStartMin)).toEqual([1380, 1380]);
+  });
+
+  it('formats the whole time range and flags midnight crossings', () => {
+    expect(formatBarRange({ runStartMin: 480 }, 1200)).toEqual({
+      text: '08:00–08:20',
+      wraps: false,
+    });
+    expect(formatBarRange({ runStartMin: 1380 }, 7200)).toEqual({
+      text: '23:00–01:00',
+      wraps: true,
+    });
+  });
+
+  it('lists the artifacts running in a time window, capped', () => {
+    const arts = Array.from({ length: 10 }, (_, i) => artifact(`a${i}`));
+    const scheds = arts.map((a) => schedule(`s-${a.id}`, a.id));
+    const group = buildGantt(input(arts, scheds)).groups[0];
+    const result = runningIn(group, 480, 495);
+    expect(result.names).toHaveLength(8);
+    expect(result.extra).toBe(2);
+    expect(runningIn(group, 600, 615)).toEqual({ names: [], extra: 0 });
+  });
+
+  it('assigns a stable color slot per item type', () => {
+    expect(itemTypeSlot('Notebook')).toBe(itemTypeSlot('Notebook'));
+    expect(itemTypeSlot('Notebook')).toBeLessThan(SERIES_COUNT);
   });
 });
 

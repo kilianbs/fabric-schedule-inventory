@@ -63,11 +63,35 @@ export function averageDuration(
   return { seconds: total / recent.length, runsUsed: recent.length };
 }
 
+/** Min/max duration of the same last-N runs `averageDuration` uses, plus the latest run. */
+export function runSummary(
+  runs: readonly JobRunRecord[],
+  artifactId: string,
+  count: number
+): Pick<GanttRow, 'minDurationSeconds' | 'maxDurationSeconds' | 'lastRun'> {
+  const own = runs
+    .filter((run) => run.artifactRowId === artifactId)
+    .sort((a, b) => b.startTimeUtc.localeCompare(a.startTimeUtc));
+  const durations = own
+    .filter((run) => typeof run.durationSeconds === 'number')
+    .slice(0, Math.max(0, count))
+    .map((run) => run.durationSeconds as number);
+  return {
+    minDurationSeconds: durations.length > 0 ? Math.min(...durations) : null,
+    maxDurationSeconds: durations.length > 0 ? Math.max(...durations) : null,
+    lastRun: own[0]
+      ? { status: own[0].status, startTimeUtc: own[0].startTimeUtc }
+      : null,
+  };
+}
+
 export interface GanttBar {
   artifactId: string;
   scheduleId: string;
   startMin: number;
   durationMin: number;
+  /** Scheduled start of the whole occurrence (same for both wrap segments). */
+  runStartMin: number;
   /** Part of a bar that crosses midnight (drawn as two segments). */
   wraps: boolean;
   hasHistory: boolean;
@@ -79,6 +103,12 @@ export interface GanttRow {
   averageDurationSeconds: number | null;
   runsUsed: number;
   hasHistory: boolean;
+  minDurationSeconds: number | null;
+  maxDurationSeconds: number | null;
+  /** Most recent run of any status, by start time. */
+  lastRun: { status: string; startTimeUtc: string } | null;
+  /** The schedules that produced bars for this row. */
+  schedules: ScheduleRecord[];
   /** True when a cron schedule hit MAX_OCCURRENCES_PER_SCHEDULE. */
   truncated: boolean;
   firstStartMin: number;
@@ -238,11 +268,12 @@ function toBars(
 ): GanttBar[] {
   return starts.flatMap((startMin): GanttBar[] => {
     const end = startMin + durationMin;
+    const base = { artifactId, scheduleId, runStartMin: startMin, hasHistory };
     if (end <= MINUTES_PER_DAY)
-      return [{ artifactId, scheduleId, startMin, durationMin, wraps: false, hasHistory }];
+      return [{ ...base, startMin, durationMin, wraps: false }];
     return [
-      { artifactId, scheduleId, startMin, durationMin: MINUTES_PER_DAY - startMin, wraps: true, hasHistory },
-      { artifactId, scheduleId, startMin: 0, durationMin: Math.min(end - MINUTES_PER_DAY, MINUTES_PER_DAY), wraps: true, hasHistory },
+      { ...base, startMin, durationMin: MINUTES_PER_DAY - startMin, wraps: true },
+      { ...base, startMin: 0, durationMin: Math.min(end - MINUTES_PER_DAY, MINUTES_PER_DAY), wraps: true },
     ];
   });
 }
@@ -363,6 +394,7 @@ export function buildGantt(input: GanttInput): GanttModel {
     const durationMin =
       (duration.seconds ?? FALLBACK_DURATION_SECONDS) / 60;
     const bars: GanttBar[] = [];
+    const drawn: ScheduleRecord[] = [];
     let truncated = false;
 
     for (const schedule of input.schedulesByArtifact.get(artifact.id) ?? []) {
@@ -379,6 +411,7 @@ export function buildGantt(input: GanttInput): GanttModel {
       }
       truncated ||= result.truncated;
       if (schedule.localTimeZoneId) zones.add(schedule.localTimeZoneId);
+      drawn.push(schedule);
       bars.push(
         ...toBars(artifact.id, schedule.id, result.starts, durationMin, hasHistory)
       );
@@ -393,6 +426,8 @@ export function buildGantt(input: GanttInput): GanttModel {
       averageDurationSeconds: duration.seconds,
       runsUsed: duration.runsUsed,
       hasHistory,
+      ...runSummary(input.runs, artifact.id, input.runCount),
+      schedules: drawn,
       truncated,
       firstStartMin: Math.min(...bars.map((bar) => bar.startMin)),
     });
@@ -408,6 +443,46 @@ export function buildGantt(input: GanttInput): GanttModel {
   );
 
   return { groups, skipped, timeZones: Array.from(zones).sort() };
+}
+
+/** Number of distinct series colors (`--color-series-1…6`). */
+export const SERIES_COUNT = 6;
+
+/** Stable 0-based color slot for an item type (same type, same color). */
+export function itemTypeSlot(itemType: string): number {
+  let hash = 0;
+  for (const char of itemType) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % SERIES_COUNT;
+}
+
+/** Display names of the artifacts with a bar inside [from, to), capped. */
+export function runningIn(
+  group: GanttGroup,
+  from: number,
+  to: number,
+  cap = 8
+): { names: string[]; extra: number } {
+  const all = group.rows
+    .filter((row) =>
+      row.bars.some(
+        (bar) => bar.startMin < to && bar.startMin + bar.durationMin > from
+      )
+    )
+    .map((row) => row.artifact.displayName);
+  return { names: all.slice(0, cap), extra: Math.max(0, all.length - cap) };
+}
+
+/** "08:00–08:20" for the whole occurrence; flags a run that crosses midnight. */
+export function formatBarRange(
+  bar: Pick<GanttBar, 'runStartMin'>,
+  durationSeconds: number | null
+): { text: string; wraps: boolean } {
+  const length = Math.max(1, Math.round((durationSeconds ?? FALLBACK_DURATION_SECONDS) / 60));
+  const end = bar.runStartMin + length;
+  return {
+    text: `${formatClock(bar.runStartMin)}–${formatClock(end % MINUTES_PER_DAY)}`,
+    wraps: end > MINUTES_PER_DAY,
+  };
 }
 
 export function formatClock(minute: number): string {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TriangleAlert, X } from 'lucide-react';
 
 import type {
@@ -8,8 +8,9 @@ import type {
 } from '@rayfin-app/shared';
 
 import {
+  GanttAxis,
   GanttGroupSection,
-  LABEL_COLUMN,
+  NowLine,
 } from '@/components/gantt-group.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { GanttFilter } from '@/components/gantt-filter.component';
@@ -18,9 +19,11 @@ import {
   countUnresolvedCapacities,
   filterArtifacts,
   filterOptions,
+  itemTypeSlot,
   WEEKDAY_NAMES,
 } from '@/lib/gantt';
 import type { GroupBy } from '@/lib/gantt';
+import { HATCH, SERIES_BG } from '@/lib/gantt-style';
 import { cn, formatNumber } from '@/lib/utils';
 
 interface FilterChip {
@@ -46,7 +49,6 @@ const CONTROL_CLASS = cn(
   'border-input bg-background text-foreground text-300 h-800 rounded-lg border px-300',
   FOCUS
 );
-const AXIS_HOURS = Array.from({ length: 12 }, (_, index) => index * 2);
 
 /**
  * "Typical day" Gantt: one row per scheduled artifact, bars at the scheduled
@@ -118,6 +120,25 @@ export function GanttView({
       label: allWorkspaces.find((o) => o.key === key)?.label ?? key,
     })),
   ];
+  const itemTypes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          model.groups.flatMap((group) =>
+            group.rows.map((row) => row.artifact.itemType ?? '')
+          )
+        )
+      ).sort(),
+    [model]
+  );
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  // "Now" is the browser's clock; schedules may use other zones (see notices).
+  const nowMin =
+    weekday === now.getDay() ? now.getHours() * 60 + now.getMinutes() : null;
   const clearFilters = () => setFilters({ capacities: [], workspaces: [] });
   const removeChip = (chip: FilterChip) =>
     setFilters((current) =>
@@ -347,43 +368,67 @@ export function GanttView({
                 hint="No scheduled artifacts run on the selected day. Pick another day, include disabled schedules, or run a sync."
               />
             ) : (
-              <div
-                className="border-border bg-card animate-fade-up overflow-x-auto rounded-2xl border shadow-sm"
-                data-testid="gantt-chart"
-              >
-                <div className="min-w-[64rem]">
-                  <div className={cn('bg-card grid', LABEL_COLUMN)} aria-hidden="true">
-                    <div className="bg-card sticky left-0 z-10 px-300 py-200 text-200 text-muted-foreground">
-                      Artifact
-                    </div>
-                    <div className="relative h-600">
-                      {AXIS_HOURS.map((hour) => (
-                        <span
-                          key={hour}
-                          className="text-200 absolute top-200 -translate-x-1/2 text-muted-foreground tabular-nums first:translate-x-0"
-                          style={{ left: `${(hour / 24) * 100}%` }}
-                        >
-                          {String(hour).padStart(2, '0')}:00
-                        </span>
-                      ))}
-                    </div>
+              <>
+                <Legend itemTypes={itemTypes} />
+                <div
+                  className="border-border bg-card animate-fade-up max-h-[75vh] overflow-auto rounded-2xl border shadow-sm"
+                  data-testid="gantt-chart"
+                >
+                  <div className="relative min-w-[64rem]">
+                    <GanttAxis nowMin={nowMin} />
+                    {model.groups.map((group) => (
+                      <GanttGroupSection
+                        key={`${groupBy}:${group.key}`}
+                        group={group}
+                        maxLoad={maxLoad}
+                        runCount={runCount}
+                        expanded={!collapsed.has(`${groupBy}:${group.key}`)}
+                        onToggle={() => toggle(`${groupBy}:${group.key}`)}
+                      />
+                    ))}
+                    <NowLine nowMin={nowMin} />
                   </div>
-                  {model.groups.map((group) => (
-                    <GanttGroupSection
-                      key={`${groupBy}:${group.key}`}
-                      group={group}
-                      maxLoad={maxLoad}
-                      expanded={!collapsed.has(`${groupBy}:${group.key}`)}
-                      onToggle={() => toggle(`${groupBy}:${group.key}`)}
-                    />
-                  ))}
                 </div>
-              </div>
+              </>
             )}
           </>
         ) : null}
       </div>
     </main>
+  );
+}
+
+function Legend({ itemTypes }: { itemTypes: readonly string[] }) {
+  return (
+    <ul
+      aria-label="Legend"
+      className="text-200 flex flex-wrap items-center gap-x-400 gap-y-100 text-muted-foreground"
+    >
+      {itemTypes.map((type) => (
+        <li key={type} className="flex items-center gap-100">
+          <span
+            aria-hidden="true"
+            className={cn('h-300 w-500 rounded-sm', SERIES_BG[itemTypeSlot(type)])}
+          />
+          {type || 'Item'}
+        </li>
+      ))}
+      <li className="flex items-center gap-100">
+        <span
+          aria-hidden="true"
+          className="bg-muted h-300 w-500 rounded-sm border border-dashed border-muted-foreground"
+          style={HATCH}
+        />
+        No run history
+      </li>
+      <li className="flex items-center gap-100">
+        <span
+          aria-hidden="true"
+          className="ring-destructive bg-series-1 h-300 w-500 rounded-sm ring-2"
+        />
+        Last run failed
+      </li>
+    </ul>
   );
 }
 

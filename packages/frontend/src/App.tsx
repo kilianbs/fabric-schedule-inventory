@@ -29,6 +29,8 @@ const ARTIFACT_FIELDS = [
   'workspaceId',
   'workspaceName',
   'workspaceType',
+  'capacityId',
+  'capacityName',
   'itemId',
   'itemType',
   'displayName',

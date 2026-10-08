@@ -88,8 +88,35 @@ describe('AppShell', () => {
     expect(screen.queryByRole('button', { name: /mode/i })).toBeNull();
   });
 
+  it('brands the side bar as Microsoft Fabric', () => {
+    renderShell();
+    expect(screen.getByText('Microsoft Fabric')).toBeInTheDocument();
+  });
+
   it('has no refresh action in the top bar', () => {
     renderShell();
     expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
+  });
+
+  it('collapses the navigation to icons, keeps link names and remembers it', () => {
+    window.localStorage.removeItem('fsi.sidebar-collapsed');
+    const { unmount } = renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }));
+    const expand = screen.getByRole('button', { name: 'Expand navigation' });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('link', { name: 'Inventory' })).toHaveAttribute(
+      'title',
+      'Inventory'
+    );
+    unmount();
+    renderShell();
+    expect(
+      screen.getByRole('button', { name: 'Expand navigation' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand navigation' }));
+    expect(
+      screen.getByRole('button', { name: 'Collapse navigation' })
+    ).toHaveAttribute('aria-expanded', 'true');
+    window.localStorage.removeItem('fsi.sidebar-collapsed');
   });
 });

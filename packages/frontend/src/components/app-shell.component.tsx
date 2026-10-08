@@ -5,13 +5,21 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { ChartGantt, Info, LayoutDashboard, RefreshCw } from 'lucide-react';
+import {
+  ChartGantt,
+  Info,
+  LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import fabricLogo from '@fabric-msft/svg-icons/fabric_48_color.svg';
 import type { SyncRunRecord } from '@rayfin-app/shared';
 
-import { FabricAppMark } from '@/FabricAppMark';
 import { routeHref } from '@/hooks/use-hash-route';
 import type { AppRoute } from '@/hooks/use-hash-route';
 import { cn, formatNumber, formatTimestamp } from '@/lib/utils';
@@ -55,6 +63,25 @@ export interface AppShellProps {
 const ACTION_FOCUS =
   'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none';
 
+/** Per-viewer UI preference; storage may be unavailable, so never rely on it. */
+const COLLAPSED_KEY = 'fsi.sidebar-collapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(value: boolean) {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0');
+  } catch {
+    // Ignore: the preference simply is not remembered.
+  }
+}
+
 /** Left navigation, a top bar with the page actions, and the page content. */
 export function AppShell({
   route,
@@ -69,20 +96,43 @@ export function AppShell({
     ? formatTimestamp(lastRun.finishedAt ?? lastRun.startedAt)
     : null;
   const runTone = syncTone(lastRun?.status);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggleCollapsed = () =>
+    setCollapsed((current) => {
+      writeCollapsed(!current);
+      return !current;
+    });
+  /** Classes applied only while collapsed, and only on the lg+ side rail. */
+  const whenCollapsed = (classes: string) => (collapsed ? classes : undefined);
 
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
-      <aside className="border-border bg-card flex flex-col gap-400 border-b px-300 py-300 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:border-r lg:border-b-0 lg:py-400">
-        <div className="flex items-center gap-300 px-200">
-          <div className="h-700 w-700 shrink-0">
-            <FabricAppMark />
-          </div>
-          <div className="min-w-0">
-            <p className="font-heading text-400 font-semibold leading-none">
+      <aside
+        data-collapsed={collapsed ? '' : undefined}
+        className={cn(
+          'border-border bg-card flex flex-col gap-400 border-b px-300 py-300 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:border-r lg:border-b-0 lg:py-400 lg:transition-[width] lg:duration-200',
+          whenCollapsed('lg:w-16 lg:px-200')
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-center gap-300 px-200',
+            whenCollapsed('lg:flex-col lg:px-0')
+          )}
+        >
+          <img
+            src={fabricLogo}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="h-700 w-700 shrink-0 select-none"
+          />
+          <div className={cn('min-w-0 flex-1', whenCollapsed('lg:sr-only'))}>
+            <p className="font-heading text-400 truncate font-semibold leading-tight">
               Schedule Inventory
             </p>
-            <p className="text-200 mt-100 text-muted-foreground">
-              Fabric workspaces
+            <p className="text-200 mt-100 truncate text-muted-foreground">
+              Microsoft Fabric
             </p>
           </div>
         </div>
@@ -93,7 +143,12 @@ export function AppShell({
         >
           {NAV_SECTIONS.map((section) => (
             <div key={section.title} className="flex flex-col gap-100">
-              <p className="text-100 px-300 pb-100 font-semibold uppercase tracking-widest text-muted-foreground">
+              <p
+                className={cn(
+                  'text-100 px-300 pb-100 font-semibold uppercase tracking-widest text-muted-foreground',
+                  whenCollapsed('lg:sr-only')
+                )}
+              >
                 {section.title}
               </p>
               {section.items.map(({ route: target, label, icon: Icon }) => {
@@ -103,6 +158,7 @@ export function AppShell({
                     key={target}
                     href={routeHref(target)}
                     aria-current={active ? 'page' : undefined}
+                    title={collapsed ? label : undefined}
                     onClick={(event) => {
                       event.preventDefault();
                       onNavigate(target);
@@ -112,11 +168,14 @@ export function AppShell({
                       ACTION_FOCUS,
                       active
                         ? 'border-primary bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-accent border-transparent'
+                        : 'text-foreground hover:bg-accent border-transparent',
+                      whenCollapsed(
+                        'lg:justify-center lg:px-0 lg:hover:translate-x-0'
+                      )
                     )}
                   >
-                    <Icon aria-hidden="true" className="icon-size-200" />
-                    {label}
+                    <Icon aria-hidden="true" className="icon-size-200 shrink-0" />
+                    <span className={whenCollapsed('lg:sr-only')}>{label}</span>
                   </a>
                 );
               })}
@@ -124,39 +183,68 @@ export function AppShell({
           ))}
         </nav>
 
-        <div className="border-border bg-background hidden rounded-xl border p-300 lg:mt-auto lg:block">
-          <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
-            Fabric scope
-          </p>
-          <p className="text-300 mt-100 font-semibold">
-            All accessible workspaces
-          </p>
-          <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className="bg-primary h-100 w-100 rounded-full"
-            />
-            {formatNumber(artifactCount)} scheduled artifact
-            {artifactCount === 1 ? '' : 's'}
-          </p>
-          <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className={cn('h-100 w-100 shrink-0 rounded-full', runTone.dot)}
-            />
-            <span>
-              {lastSync ? (
-                <>
-                  <span className={cn('font-medium', runTone.text)}>
-                    {runTone.label}
-                  </span>{' '}
-                  · {lastSync}
-                </>
-              ) : (
-                'Not synced yet'
-              )}
+        <div className="hidden flex-col gap-300 lg:mt-auto lg:flex">
+          <div
+            className={cn(
+              'border-border bg-background rounded-xl border p-300',
+              whenCollapsed('hidden')
+            )}
+          >
+            <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
+              Fabric scope
+            </p>
+            <p className="text-300 mt-100 font-semibold">
+              All accessible workspaces
+            </p>
+            <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="bg-primary h-100 w-100 rounded-full"
+              />
+              {formatNumber(artifactCount)} scheduled artifact
+              {artifactCount === 1 ? '' : 's'}
+            </p>
+            <p className="text-200 mt-100 flex items-center gap-200 text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn('h-100 w-100 shrink-0 rounded-full', runTone.dot)}
+              />
+              <span>
+                {lastSync ? (
+                  <>
+                    <span className={cn('font-medium', runTone.text)}>
+                      {runTone.label}
+                    </span>{' '}
+                    · {lastSync}
+                  </>
+                ) : (
+                  'Not synced yet'
+                )}
+              </span>
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            className={cn(
+              'hover:bg-accent text-300 inline-flex h-800 items-center gap-200 rounded-lg px-300 text-muted-foreground transition-colors duration-150 hover:text-foreground',
+              ACTION_FOCUS,
+              whenCollapsed('justify-center px-0')
+            )}
+          >
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" className="icon-size-200 shrink-0" />
+            ) : (
+              <PanelLeftClose aria-hidden="true" className="icon-size-200 shrink-0" />
+            )}
+            <span aria-hidden="true" className={whenCollapsed('sr-only')}>
+              Collapse
             </span>
-          </p>
+          </button>
         </div>
       </aside>
 

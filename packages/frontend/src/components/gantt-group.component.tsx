@@ -1,6 +1,20 @@
-import { ChevronRight } from 'lucide-react';
+import type { ReactNode } from 'react';
+import {
+  Activity,
+  CalendarClock,
+  ChevronRight,
+  Folder,
+  Gauge,
+  History,
+  Info,
+  Server,
+  Timer,
+  TriangleAlert,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import { TooltipTarget } from '@/components/gantt-tooltip.component';
+import { ItemTypeIcon } from '@/components/item-type.component';
 import {
   capacityInfo,
   formatBarRange,
@@ -160,21 +174,52 @@ function StripTip({
   from: number;
   count: number;
 }) {
-  const { names, extra } = runningIn(group, from, from + CELL_MINUTES);
+  const { items, extra } = runningIn(group, from, from + CELL_MINUTES);
+  const overlap = count > 1;
   return (
-    <div className="text-200 flex flex-col gap-100">
-      <p className="text-300 font-semibold tabular-nums">
-        {formatClock(from)}–{formatClock((from + CELL_MINUTES) % MINUTES_PER_DAY)}
-      </p>
-      <p className={count > 1 ? 'text-destructive font-medium' : undefined}>
-        {count} concurrent
-      </p>
-      <ul className="list-disc pl-400">
-        {names.map((name, index) => (
-          <li key={`${name}:${index}`}>{name}</li>
+    <div className="text-200 w-64 max-w-full">
+      <div className="border-border flex items-center justify-between gap-300 border-b px-400 py-300">
+        <div className="min-w-0">
+          <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
+            Time window
+          </p>
+          <p className="font-numeric text-400 mt-100 font-semibold tabular-nums leading-none">
+            {formatClock(from)}–{formatClock((from + CELL_MINUTES) % MINUTES_PER_DAY)}
+          </p>
+        </div>
+        <span
+          className={cn(
+            'text-200 inline-flex shrink-0 items-center gap-100 rounded-full px-200 py-100 font-semibold',
+            overlap ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+          )}
+        >
+          {overlap ? (
+            <TriangleAlert aria-hidden="true" className="icon-size-100" />
+          ) : (
+            <Activity aria-hidden="true" className="icon-size-100" />
+          )}
+          {count} concurrent
+        </span>
+      </div>
+      <ul className="flex flex-col gap-100 px-400 py-300">
+        {items.map((item, index) => (
+          <li key={`${item.name}:${index}`} className="flex min-w-0 items-center gap-200">
+            <span
+              aria-hidden="true"
+              className={cn(
+                'h-200 w-200 shrink-0 rounded-sm',
+                SERIES_BG[itemTypeSlot(item.itemType)]
+              )}
+            />
+            <span className="truncate">{item.name}</span>
+          </li>
         ))}
       </ul>
-      {extra > 0 ? <p className="text-muted-foreground">+{extra} more</p> : null}
+      {extra > 0 ? (
+        <p className="border-border border-t px-400 py-200 text-muted-foreground">
+          +{extra} more
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -199,8 +244,12 @@ function GanttRowItem({
       )}
     >
       <div className="sticky left-0 z-10 min-w-0 bg-inherit py-200 pr-200 pl-800">
-        <p className="text-300 truncate font-medium" title={row.artifact.displayName}>
-          {row.artifact.displayName}
+        <p
+          className="text-300 flex min-w-0 items-center gap-200 font-medium"
+          title={row.artifact.displayName}
+        >
+          <ItemTypeIcon itemType={row.artifact.itemType} />
+          <span className="truncate">{row.artifact.displayName}</span>
         </p>
         <p className="text-200 truncate text-muted-foreground">
           {summary}
@@ -273,69 +322,164 @@ function BarTip({
   const schedule = row.schedules.find((s) => s.id === bar.scheduleId);
   const range = formatBarRange(bar, row.averageDurationSeconds);
   const capacity = capacityInfo(artifact);
-  const failed = row.lastRun?.status.toLowerCase() === 'failed';
-  const rows: [string, string][] = [
-    ['Workspace', artifact.workspaceName || artifact.workspaceId || '—'],
-    [
-      'Capacity',
-      capacity.nameKnown ? capacity.label : `${capacity.label} (name unavailable)`,
-    ],
-    [
-      'Schedule',
-      schedule
-        ? `${describeSchedule(schedule)}${schedule.localTimeZoneId ? ` (${schedule.localTimeZoneId})` : ''}`
-        : '—',
-    ],
-    [
-      'Time',
-      `${range.text}${range.wraps ? ' (continues past midnight)' : ''}`,
-    ],
-  ];
-  if (row.hasHistory) {
-    rows.push([
-      'Avg duration',
-      `${formatDuration(row.averageDurationSeconds)} · ${row.runsUsed} of ${runCount} runs`,
-    ]);
-    if (row.runsUsed > 1)
-      rows.push([
-        'Min / max',
-        `${formatDuration(row.minDurationSeconds)} / ${formatDuration(row.maxDurationSeconds)}`,
-      ]);
-  }
-  rows.push([
-    'Last run',
-    row.lastRun
-      ? `${row.lastRun.status} · ${formatScheduleDateTime(row.lastRun.startTimeUtc)} UTC`
-      : 'none recorded',
-  ]);
-  rows.push(['State', schedule?.enabled === false ? 'Disabled' : 'Enabled']);
+  const swatch = SERIES_BG[itemTypeSlot(artifact.itemType ?? '')];
+  const enabled = schedule?.enabled !== false;
+  const lastStatus = row.lastRun?.status.toLowerCase();
+  const failed = lastStatus === 'failed';
 
   return (
-    <div className="text-200 flex flex-col gap-100">
-      <div>
-        <p className="text-300 font-semibold">{artifact.displayName}</p>
-        <p className="text-muted-foreground">{artifact.itemType || 'Item'}</p>
+    <div className="text-200 w-80 max-w-full">
+      <div className="flex items-start gap-300 px-400 pt-300 pb-200">
+        <ItemTypeIcon itemType={artifact.itemType} size="lg" className="mt-100-nudge" />
+        <div className="min-w-0 flex-1">
+          <p className="font-heading text-300 line-clamp-2 font-semibold leading-tight break-words">
+            {artifact.displayName}
+          </p>
+          <p className="mt-100 flex items-center gap-100 text-muted-foreground">
+            <span
+              aria-hidden="true"
+              title="Bar colour"
+              className={cn('h-200 w-200 shrink-0 rounded-sm', swatch)}
+            />
+            {artifact.itemType || 'Item'}
+          </p>
+        </div>
+        <span
+          className={cn(
+            'text-100 inline-flex shrink-0 items-center gap-100 rounded-full px-200 py-100 font-semibold uppercase tracking-wide',
+            enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'h-100 w-100 rounded-full',
+              enabled ? 'bg-primary' : 'bg-muted-foreground'
+            )}
+          />
+          {enabled ? 'Enabled' : 'Disabled'}
+        </span>
       </div>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-300 gap-y-100">
-        {rows.map(([term, value]) => (
-          <div key={term} className="contents">
-            <dt className="text-muted-foreground">{term}</dt>
-            <dd
-              className={cn(
-                'min-w-0 break-words',
-                term === 'Last run' && failed && 'text-destructive font-medium'
-              )}
+
+      <div className="mx-400 flex items-center justify-between gap-200 rounded-xl bg-muted px-300 py-200">
+        <p className="font-numeric text-500 font-semibold tabular-nums leading-none">
+          {range.text}
+        </p>
+        <div className="flex shrink-0 items-center gap-100">
+          {range.wraps ? (
+            <span
+              title="Continues past midnight"
+              className="border-border bg-popover text-100 rounded-full border px-200 py-100 font-semibold"
             >
-              {value}
-            </dd>
-          </div>
-        ))}
+              +1 day
+            </span>
+          ) : null}
+          <span className="bg-popover text-200 inline-flex items-center gap-100 rounded-full px-200 py-100 font-medium tabular-nums">
+            <Timer aria-hidden="true" className="icon-size-100 text-muted-foreground" />
+            {row.hasHistory ? formatDuration(row.averageDurationSeconds) : 'No history'}
+          </span>
+        </div>
+      </div>
+
+      {row.hasHistory && row.runsUsed > 1 ? (
+        <DurationRange row={row} swatch={swatch} />
+      ) : null}
+
+      <dl className="flex flex-col gap-200 px-400 py-300">
+        <DetailRow icon={Folder} term="Workspace">
+          {artifact.workspaceName || artifact.workspaceId || '—'}
+        </DetailRow>
+        <DetailRow icon={Server} term="Capacity">
+          {capacity.nameKnown ? capacity.label : `${capacity.label} (name unavailable)`}
+        </DetailRow>
+        <DetailRow icon={CalendarClock} term="Schedule">
+          {schedule
+            ? `${describeSchedule(schedule)}${schedule.localTimeZoneId ? ` (${schedule.localTimeZoneId})` : ''}`
+            : '—'}
+        </DetailRow>
+        {row.hasHistory ? (
+          <DetailRow icon={Gauge} term="Avg duration">
+            {`${formatDuration(row.averageDurationSeconds)} · ${row.runsUsed} of ${runCount} runs`}
+          </DetailRow>
+        ) : null}
+        <DetailRow icon={History} term="Last run">
+          {row.lastRun ? (
+            <span className="inline-flex min-w-0 items-center gap-100">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'h-200 w-200 shrink-0 rounded-full',
+                  failed
+                    ? 'bg-destructive'
+                    : lastStatus === 'completed'
+                      ? 'bg-primary'
+                      : 'bg-muted-foreground'
+                )}
+              />
+              <span className={cn(failed && 'text-destructive font-medium')}>
+                {`${row.lastRun.status} · ${formatScheduleDateTime(row.lastRun.startTimeUtc)} UTC`}
+              </span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">none recorded</span>
+          )}
+        </DetailRow>
       </dl>
+
       {row.hasHistory ? null : (
-        <p className="border-border text-muted-foreground border-t pt-100">
-          No run history: the bar uses a placeholder width.
+        <p className="border-border flex items-start gap-200 border-t px-400 py-200 text-muted-foreground">
+          <Info aria-hidden="true" className="icon-size-200 mt-100-nudge shrink-0" />
+          <span>No run history: the bar uses a placeholder width.</span>
         </p>
       )}
+    </div>
+  );
+}
+
+/** Fastest-to-slowest range of the sampled runs, with the average marked. */
+function DurationRange({ row, swatch }: { row: GanttRow; swatch: string }) {
+  const min = row.minDurationSeconds ?? 0;
+  const max = row.maxDurationSeconds ?? min;
+  const avg = row.averageDurationSeconds ?? min;
+  const position = max > min ? ((avg - min) / (max - min)) * 100 : 50;
+  return (
+    <div className="px-400 pt-300">
+      <div className="relative h-200">
+        <div className="absolute inset-x-0 top-1/2 h-100 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
+          <div className={cn('h-full w-full opacity-40', swatch)} />
+        </div>
+        <span
+          aria-hidden="true"
+          title="Average"
+          className={cn(
+            'ring-popover absolute top-1/2 h-200 w-200 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2',
+            swatch
+          )}
+          style={{ left: `${position}%` }}
+        />
+      </div>
+      <div className="mt-100 flex justify-between text-muted-foreground tabular-nums">
+        <span>{`Fastest ${formatDuration(row.minDurationSeconds)}`}</span>
+        <span>{`Slowest ${formatDuration(row.maxDurationSeconds)}`}</span>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({
+  icon: Icon,
+  term,
+  children,
+}: {
+  icon: LucideIcon;
+  term: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[auto_5.5rem_minmax(0,1fr)] items-start gap-x-200">
+      <Icon aria-hidden="true" className="icon-size-200 mt-100-nudge text-muted-foreground" />
+      <dt className="text-muted-foreground">{term}</dt>
+      <dd className="min-w-0 font-medium break-words">{children}</dd>
     </div>
   );
 }

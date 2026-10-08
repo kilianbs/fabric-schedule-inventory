@@ -455,21 +455,24 @@ export function itemTypeSlot(itemType: string): number {
   return hash % SERIES_COUNT;
 }
 
-/** Display names of the artifacts with a bar inside [from, to), capped. */
+/** The artifacts (name and item type) with a bar inside [from, to), capped. */
 export function runningIn(
   group: GanttGroup,
   from: number,
   to: number,
   cap = 8
-): { names: string[]; extra: number } {
+): { items: { name: string; itemType: string }[]; extra: number } {
   const all = group.rows
     .filter((row) =>
       row.bars.some(
         (bar) => bar.startMin < to && bar.startMin + bar.durationMin > from
       )
     )
-    .map((row) => row.artifact.displayName);
-  return { names: all.slice(0, cap), extra: Math.max(0, all.length - cap) };
+    .map((row) => ({
+      name: row.artifact.displayName,
+      itemType: row.artifact.itemType ?? '',
+    }));
+  return { items: all.slice(0, cap), extra: Math.max(0, all.length - cap) };
 }
 
 /** "08:00–08:20" for the whole occurrence; flags a run that crosses midnight. */

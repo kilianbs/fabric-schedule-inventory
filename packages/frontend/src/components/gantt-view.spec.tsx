@@ -99,7 +99,8 @@ describe('GanttView', () => {
 
   it('warns about mixed time zones', () => {
     renderGantt();
-    expect(screen.getByText(/2 time zones/)).toBeInTheDocument();
+    const notice = screen.getByText(/2 time zones/).closest('[role="status"]');
+    expect(notice).toHaveClass('bg-warning', 'text-warning-foreground');
   });
 
   it('suggests a sync when there are no runs yet', () => {

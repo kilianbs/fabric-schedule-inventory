@@ -464,9 +464,10 @@ describe('tooltip data', () => {
     const scheds = arts.map((a) => schedule(`s-${a.id}`, a.id));
     const group = buildGantt(input(arts, scheds)).groups[0];
     const result = runningIn(group, 480, 495);
-    expect(result.names).toHaveLength(8);
+    expect(result.items).toHaveLength(8);
+    expect(result.items[0]).toEqual({ name: 'Artifact a0', itemType: '' });
     expect(result.extra).toBe(2);
-    expect(runningIn(group, 600, 615)).toEqual({ names: [], extra: 0 });
+    expect(runningIn(group, 600, 615)).toEqual({ items: [], extra: 0 });
   });
 
   it('assigns a stable color slot per item type', () => {

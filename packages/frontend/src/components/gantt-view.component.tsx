@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { TriangleAlert, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import type {
   ArtifactRecord,
@@ -14,6 +14,8 @@ import {
 } from '@/components/gantt-group.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import { GanttFilter } from '@/components/gantt-filter.component';
+import { ItemTypeIcon } from '@/components/item-type.component';
+import { WarningEmoji } from '@/components/warning-emoji.component';
 import {
   buildGantt,
   countUnresolvedCapacities,
@@ -410,6 +412,7 @@ function Legend({ itemTypes }: { itemTypes: readonly string[] }) {
             aria-hidden="true"
             className={cn('h-300 w-500 rounded-sm', SERIES_BG[itemTypeSlot(type)])}
           />
+          <ItemTypeIcon itemType={type} />
           {type || 'Item'}
         </li>
       ))}
@@ -441,13 +444,10 @@ function Notices({ messages }: { messages: readonly (string | null)[] }) {
         <p
           key={message}
           role="status"
-          className="border-border bg-card text-300 flex items-start gap-200 rounded-xl border px-400 py-300"
+          className="border-warning-border bg-warning text-warning-foreground text-300 flex items-start gap-300 rounded-xl border px-400 py-300"
         >
-          <TriangleAlert
-            aria-hidden="true"
-            className="icon-size-200 mt-100 shrink-0 text-muted-foreground"
-          />
-          {message}
+          <WarningEmoji />
+          <span className="pt-100-nudge">{message}</span>
         </p>
       ))}
     </div>

@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils';
 
 /** Gap between the anchor and the bubble, and the minimum viewport margin. */
 const GAP = 8;
+/** Closest the arrow may get to the bubble's left or right edge. */
+const ARROW_INSET = 16;
+
+type Placement = 'top' | 'bottom';
 
 interface Anchor {
   x: number;
@@ -119,6 +123,7 @@ function TooltipBubble({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<Placement>('top');
 
   // Positioned imperatively after measuring, so there is no flash at 0,0.
   useLayoutEffect(() => {
@@ -128,9 +133,17 @@ function TooltipBubble({
     const maxLeft = Math.max(GAP, window.innerWidth - width - GAP);
     const left = Math.min(Math.max(GAP, anchor.x - width / 2), maxLeft);
     const above = anchor.top - height - GAP;
-    const top = above >= GAP ? above : anchor.bottom + GAP;
+    const next: Placement = above >= GAP ? 'top' : 'bottom';
+    const top = next === 'top' ? above : anchor.bottom + GAP;
+    // Keep the arrow on the anchor, but clear of the rounded corners.
+    const arrowX = Math.min(
+      Math.max(ARROW_INSET, anchor.x - left),
+      Math.max(ARROW_INSET, width - ARROW_INSET)
+    );
     el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    el.style.setProperty('--arrow-x', `${Math.round(arrowX)}px`);
     el.style.visibility = 'visible';
+    setPlacement(next);
   }, [anchor]);
 
   return (
@@ -138,12 +151,28 @@ function TooltipBubble({
       ref={ref}
       id={id}
       role="tooltip"
+      data-placement={placement}
       style={{ visibility: 'hidden' }}
-      className={cn(
-        'border-border bg-popover text-popover-foreground pointer-events-none fixed top-0 left-0 z-50 w-max max-w-xs rounded-xl border px-300 py-200 shadow-lg'
-      )}
+      className="pointer-events-none fixed top-0 left-0 z-50 w-max max-w-[calc(100vw-1rem)]"
     >
-      {children}
+      <div
+        className="border-border bg-popover text-popover-foreground animate-tooltip-in relative rounded-2xl border shadow-xl"
+        style={{
+          transformOrigin: `var(--arrow-x) ${placement === 'top' ? 'bottom' : 'top'}`,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'border-border bg-popover absolute h-300-nudge w-300-nudge -translate-x-1/2 rotate-45',
+            placement === 'top'
+              ? 'bottom-0 translate-y-1/2 border-r border-b'
+              : 'top-0 -translate-y-1/2 border-t border-l'
+          )}
+          style={{ left: 'var(--arrow-x)' }}
+        />
+        <div className="relative overflow-hidden rounded-2xl">{children}</div>
+      </div>
     </div>
   );
 }

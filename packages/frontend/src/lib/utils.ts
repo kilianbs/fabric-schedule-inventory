@@ -6,7 +6,31 @@
 //-----------------------------------------------------------------------
 
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+/**
+ * The app's font-size tokens (`--text-*` in global.css). Without them
+ * tailwind-merge reads `text-300` as a colour and drops whichever of
+ * `text-300` / `text-primary-foreground` comes first.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: [
+        '100',
+        '200',
+        '300',
+        '400',
+        '500',
+        '600',
+        'hero-700',
+        'hero-800',
+        'hero-900',
+        'hero-1000',
+      ],
+    },
+  },
+});
 
 /**
  * Merge Tailwind CSS class names with conflict resolution.

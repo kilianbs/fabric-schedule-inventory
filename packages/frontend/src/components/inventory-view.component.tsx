@@ -5,36 +5,42 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { useMemo, useState } from 'react';
-import { Folder, MousePointerClick, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ExternalLink,
+  Folder,
+  MousePointerClick,
+  Search,
+  Server,
+  Shapes,
+  X,
+} from 'lucide-react';
 
-import { useCssTheme } from '@microsoft/fabric-visuals';
-import { DataGrid } from '@microsoft/fabric-datagrid';
-import type { GridColumnDef, Row } from '@microsoft/fabric-datagrid';
-import type { InteractionEvent } from '@microsoft/fabric-visuals-core';
 import type {
   ArtifactRecord,
   ScheduleRecord,
   SyncRunRecord,
 } from '@rayfin-app/shared';
 
+import { ArtifactTable } from '@/components/artifact-table.component';
+import type { ArtifactTableRow } from '@/components/artifact-table.component';
+import { FilterMenu } from '@/components/filter-menu.component';
 import { InventorySummary } from '@/components/inventory-summary.component';
+import { ItemTypeIcon, TypeBadge } from '@/components/item-type.component';
 import { ScheduleDetail } from '@/components/schedule-detail.component';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
 import {
+  capacityOptions as toCapacityOptions,
   countBy,
   DEFAULT_FILTERS,
   filterArtifacts,
   isDefaultFilters,
 } from '@/lib/filter-artifacts';
 import type { ArtifactFilters } from '@/lib/filter-artifacts';
+import { capacityInfo } from '@/lib/gantt';
+import { fabricLinks } from '@/lib/fabric-links';
 import { computeTotals } from '@/lib/inventory-totals';
-import {
-  cn,
-  formatNumber,
-  formatRelativeTime,
-  formatTimestamp,
-} from '@/lib/utils';
+import { cn, formatNumber } from '@/lib/utils';
 
 export type InventoryStatus = 'loading' | 'error' | 'ready';
 
@@ -44,6 +50,8 @@ export interface InventoryViewProps {
   artifacts: ArtifactRecord[];
   schedulesByArtifact: Map<string, ScheduleRecord[]>;
   lastRun?: SyncRunRecord | null;
+  /** Fabric portal base URL from the deployment config (public cloud if unset). */
+  portalUrl?: string;
   onRetry?: () => void;
 }
 
@@ -55,13 +63,16 @@ const CONTROL_CLASS = cn(
   FOCUS
 );
 
+/** Detail sits beside the grid from Tailwind's `2xl` breakpoint (96rem). */
+const SIDE_BY_SIDE_QUERY = '(min-width: 96rem)';
+
 const SECONDARY_BUTTON = cn(
   'border-border bg-background hover:bg-accent text-300 inline-flex h-800 items-center gap-200 rounded-lg border px-300 font-medium transition-[color,background-color,border-color,scale] duration-150 active:scale-95',
   FOCUS
 );
 
 /**
- * The artifact schedule inventory: global figures, filters and a DataGrid of
+ * The artifact schedule inventory: global figures, filters and a table of
  * every scheduled artifact, with the selected row's schedules beside it.
  */
 export function InventoryView({
@@ -70,133 +81,81 @@ export function InventoryView({
   artifacts,
   schedulesByArtifact,
   lastRun = null,
+  portalUrl,
   onRetry,
 }: InventoryViewProps) {
-  const theme = useCssTheme();
   const [filters, setFilters] = useState<ArtifactFilters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const detailRef = useRef<HTMLElement>(null);
 
   const updateFilter = <K extends keyof ArtifactFilters>(
     key: K,
     value: ArtifactFilters[K]
   ) => setFilters((current) => ({ ...current, [key]: value }));
 
-  const workspaceOptions = useMemo(
-    () => countBy(artifacts, 'workspaceName'),
+  const capacityOptions = useMemo(
+    () => toCapacityOptions(artifacts),
     [artifacts]
   );
-  const typeOptions = useMemo(() => countBy(artifacts, 'itemType'), [artifacts]);
+  // Workspaces narrow to the selected capacity.
+  const workspaceOptions = useMemo(
+    () =>
+      countBy(
+        filterArtifacts(artifacts, {
+          ...DEFAULT_FILTERS,
+          capacity: filters.capacity,
+        }),
+        'workspaceName'
+      ).map((option) => ({ ...option, label: option.value })),
+    [artifacts, filters.capacity]
+  );
+
+  const updateCapacity = (capacity: string) =>
+    setFilters((current) => {
+      const workspaceStillListed =
+        current.workspace === '' ||
+        filterArtifacts(artifacts, { ...DEFAULT_FILTERS, capacity }).some(
+          (artifact) => artifact.workspaceName === current.workspace
+        );
+      return {
+        ...current,
+        capacity,
+        workspace: workspaceStillListed ? current.workspace : '',
+      };
+    });
+
+  // Below 2xl the detail stacks under the grid; bring it into view on select.
+  useEffect(() => {
+    if (selectedId === null) return;
+    if (window.matchMedia?.(SIDE_BY_SIDE_QUERY).matches) return;
+    detailRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedId]);
+  const typeOptions = useMemo(
+    () =>
+      countBy(artifacts, 'itemType').map((option) => ({
+        ...option,
+        label: option.value,
+        icon: <ItemTypeIcon itemType={option.value} />,
+      })),
+    [artifacts]
+  );
 
   const visibleArtifacts = useMemo(
     () => filterArtifacts(artifacts, filters),
     [artifacts, filters]
   );
 
-  const columns = useMemo<GridColumnDef[]>(
-    () => [
-      {
-        id: 'displayName',
-        header: 'Artifact',
-        sortable: true,
-        minWidth: 240,
-        cellRenderer: (value) => {
-          const name = String(value ?? '');
-          return (
-            <span className="text-300 block truncate font-medium" title={name}>
-              {name}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'itemType',
-        header: 'Type',
-        sortable: true,
-        filterable: true,
-        minWidth: 150,
-        cellRenderer: (value) => <TypeBadge value={String(value ?? '')} />,
-      },
-      {
-        id: 'workspaceName',
-        header: 'Workspace',
-        sortable: true,
-        filterable: true,
-        minWidth: 180,
-        cellRenderer: (value) => {
-          const name = String(value ?? '');
-          return (
-            <span
-              className="text-300 flex min-w-0 items-center gap-200 text-muted-foreground"
-              title={name}
-            >
-              <Folder aria-hidden="true" className="icon-size-100 shrink-0" />
-              <span className="truncate">{name}</span>
-            </span>
-          );
-        },
-      },
-      {
-        id: 'scheduleCount',
-        header: 'Schedules',
-        sortable: true,
-        numericStyling: true,
-        width: 110,
-        cellRenderer: (value) => {
-          const count = typeof value === 'number' ? value : 0;
-          return count === 0 ? (
-            <span className="text-300 text-muted-foreground">—</span>
-          ) : (
-            <span className="text-300 font-semibold tabular-nums">
-              {formatNumber(count)}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'disabledCount',
-        header: 'Disabled',
-        sortable: true,
-        numericStyling: true,
-        width: 110,
-        cellRenderer: (value) => {
-          const count = typeof value === 'number' ? value : 0;
-          return count === 0 ? (
-            <span className="text-300 text-muted-foreground">—</span>
-          ) : (
-            <span className="bg-destructive/10 text-destructive text-200 inline-flex items-center rounded-full px-300 py-100 font-semibold tabular-nums">
-              {formatNumber(count)}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'lastSynced',
-        header: 'Last synced',
-        width: 150,
-        cellRenderer: (value, row) => (
-          <span
-            className="text-200 text-muted-foreground"
-            title={String(row.lastSyncedFull ?? '')}
-          >
-            {String(value ?? '')}
-          </span>
-        ),
-      },
-      { id: 'lastSyncedFull', header: 'Last synced (full)', hidden: true },
-    ],
-    []
-  );
-
-  const rows = useMemo<Row[]>(
+  const rows = useMemo<ArtifactTableRow[]>(
     () =>
       visibleArtifacts.map((artifact) => ({
+        id: artifact.id,
         displayName: safeText(artifact.displayName),
         itemType: safeText(artifact.itemType),
         workspaceName: safeText(artifact.workspaceName),
-        scheduleCount: artifact.scheduleCount,
+        capacity: capacityInfo(artifact).label,
+        scheduleCount: artifact.scheduleCount ?? 0,
         disabledCount: disabledCount(schedulesByArtifact.get(artifact.id)),
-        lastSynced: formatRelativeTime(artifact.lastSyncedAt),
-        lastSyncedFull: formatTimestamp(artifact.lastSyncedAt),
+        lastSyncedAt: artifact.lastSyncedAt,
       })),
     [visibleArtifacts, schedulesByArtifact]
   );
@@ -223,9 +182,37 @@ export function InventoryView({
   const filtersChanged = !isDefaultFilters(filters);
   const totals = computeTotals(artifacts, schedulesByArtifact);
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
+  const activeChips = [
+    filters.query.trim() !== '' && {
+      key: 'query',
+      label: 'Search',
+      value: `“${filters.query.trim()}”`,
+      clear: () => updateFilter('query', ''),
+    },
+    filters.capacity !== '' && {
+      key: 'capacity',
+      label: 'Capacity',
+      value:
+        capacityOptions.find((option) => option.value === filters.capacity)
+          ?.label ?? filters.capacity,
+      clear: () => updateCapacity(''),
+    },
+    filters.workspace !== '' && {
+      key: 'workspace',
+      label: 'Workspace',
+      value: filters.workspace,
+      clear: () => updateFilter('workspace', ''),
+    },
+    filters.type !== '' && {
+      key: 'type',
+      label: 'Item type',
+      value: filters.type,
+      clear: () => updateFilter('type', ''),
+    },
+  ].filter((chip) => chip !== false);
 
   return (
-    <main className="px-500 py-500">
+    <main className="px-300 py-500 sm:px-500">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-500">
         <header className="animate-fade-up flex flex-wrap items-end justify-between gap-300">
           <div>
@@ -243,153 +230,171 @@ export function InventoryView({
 
         <InventorySummary totals={totals} lastRun={lastRun} />
 
-        <section
-          aria-label="Filters"
-          className="border-border bg-card animate-fade-up flex flex-wrap items-end gap-300 rounded-2xl border p-400 shadow-sm [animation-delay:240ms]"
-        >
-          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-100">
-            <label
-              htmlFor="artifact-search"
-              className="text-200 text-muted-foreground"
-            >
-              Search
-            </label>
-            <div className="relative">
-              <Search
-                aria-hidden="true"
-                className="icon-size-200 pointer-events-none absolute top-1/2 left-300 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                id="artifact-search"
-                type="search"
-                placeholder="Artifact name…"
-                value={filters.query}
-                onChange={(event) => updateFilter('query', event.target.value)}
-                className={cn(CONTROL_CLASS, 'w-full pr-800 pl-800')}
-              />
-              {filters.query !== '' ? (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={() => updateFilter('query', '')}
-                  className={cn(
-                    'hover:bg-accent animate-fade-in absolute top-1/2 right-100 inline-flex h-600 w-600 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground',
-                    FOCUS
-                  )}
-                >
-                  <X aria-hidden="true" className="icon-size-200" />
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <FilterSelect
-            id="workspace-filter"
-            label="Workspace"
-            value={filters.workspace}
-            onChange={(value) => updateFilter('workspace', value)}
-            options={workspaceOptions}
-          />
-          <FilterSelect
-            id="type-filter"
-            label="Item type"
-            value={filters.type}
-            onChange={(value) => updateFilter('type', value)}
-            options={typeOptions}
-          />
-          {filtersChanged ? (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className={cn(
-                'text-primary text-300 hover:bg-primary/10 animate-fade-in inline-flex h-800 items-center gap-100 rounded-lg px-300 font-medium',
-                FOCUS
-              )}
-            >
-              <X aria-hidden="true" className="icon-size-200" />
-              Clear filters
-            </button>
-          ) : null}
-          <p
-            className="text-200 ml-auto flex h-800 items-center tabular-nums text-muted-foreground"
-            aria-live="polite"
+        <div className="grid items-start gap-400 2xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <section
+            aria-labelledby="artifacts-heading"
+            className="border-border bg-card animate-fade-up min-w-0 rounded-2xl border shadow-sm [animation-delay:240ms]"
           >
-            <span className="font-semibold text-foreground">
-              {formatNumber(visibleArtifacts.length)}
-            </span>
-            &nbsp;of {formatNumber(artifacts.length)} artifacts
-          </p>
-        </section>
+            <div className="flex flex-col gap-300 p-400">
+              <div className="flex items-baseline justify-between gap-300">
+                <h2
+                  id="artifacts-heading"
+                  className="font-heading text-400 font-semibold"
+                >
+                  Artifacts
+                </h2>
+                <p
+                  className="text-200 tabular-nums text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <span className="font-semibold text-foreground">
+                    {formatNumber(visibleArtifacts.length)}
+                  </span>
+                  &nbsp;of {formatNumber(artifacts.length)} artifacts
+                </p>
+              </div>
 
-        <div className="grid items-start gap-400 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          {visibleArtifacts.length === 0 ? (
-            filtersChanged ? (
-              <EmptyState
-                title="No artifacts match the current filters"
-                hint="Adjust the search or filters to see more artifacts."
-                action={
+              <div
+                role="search"
+                aria-label="Filter artifacts"
+                className="flex flex-wrap items-center gap-200"
+              >
+                <div className="relative min-w-0 flex-1 basis-56">
+                  <label htmlFor="artifact-search" className="sr-only">
+                    Search artifacts
+                  </label>
+                  <Search
+                    aria-hidden="true"
+                    className="icon-size-200 pointer-events-none absolute top-1/2 left-300 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    id="artifact-search"
+                    type="search"
+                    placeholder="Search artifacts…"
+                    value={filters.query}
+                    onChange={(event) => updateFilter('query', event.target.value)}
+                    className={cn(CONTROL_CLASS, 'w-full pr-800 pl-800')}
+                  />
+                  {filters.query !== '' ? (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => updateFilter('query', '')}
+                      className={cn(
+                        'hover:bg-accent animate-fade-in absolute top-1/2 right-100 inline-flex h-600 w-600 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground',
+                        FOCUS
+                      )}
+                    >
+                      <X aria-hidden="true" className="icon-size-200" />
+                    </button>
+                  ) : null}
+                </div>
+                <FilterMenu
+                  label="Capacity"
+                  allLabel="All capacities"
+                  icon={Server}
+                  value={filters.capacity}
+                  onChange={updateCapacity}
+                  options={capacityOptions}
+                />
+                <FilterMenu
+                  label="Workspace"
+                  allLabel="All workspaces"
+                  icon={Folder}
+                  value={filters.workspace}
+                  onChange={(value) => updateFilter('workspace', value)}
+                  options={workspaceOptions}
+                />
+                <FilterMenu
+                  label="Item type"
+                  allLabel="All item types"
+                  icon={Shapes}
+                  value={filters.type}
+                  onChange={(value) => updateFilter('type', value)}
+                  options={typeOptions}
+                />
+              </div>
+
+              {filtersChanged ? (
+                <div
+                  aria-label="Active filters"
+                  role="group"
+                  className="animate-fade-in flex flex-wrap items-center gap-200"
+                >
+                  {activeChips.map((chip) => (
+                    <span
+                      key={chip.key}
+                      className="border-primary/30 bg-primary/5 text-200 inline-flex max-w-full items-center gap-100 rounded-full border py-100-nudge pr-100 pl-300"
+                    >
+                      <span className="text-muted-foreground">{chip.label}</span>
+                      <span className="truncate font-medium">{chip.value}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${chip.label.toLowerCase()} filter`}
+                        onClick={chip.clear}
+                        className={cn(
+                          'hover:bg-primary/15 inline-flex h-500 w-500 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground',
+                          FOCUS
+                        )}
+                      >
+                        <X aria-hidden="true" className="icon-size-100" />
+                      </button>
+                    </span>
+                  ))}
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className={SECONDARY_BUTTON}
+                    className={cn(
+                      'text-200 rounded-md px-200 py-100 font-medium text-muted-foreground hover:text-foreground hover:underline underline-offset-2',
+                      FOCUS
+                    )}
                   >
-                    <X aria-hidden="true" className="icon-size-200" />
-                    Show all artifacts
+                    Clear all
                   </button>
-                }
-              />
-            ) : (
-              <EmptyState
-                title="No scheduled artifacts on file"
-                hint="Run a sync to populate the inventory."
-              />
-            )
-          ) : (
-            <div
-              className="border-border bg-card animate-fade-up overflow-hidden rounded-2xl border shadow-sm [animation-delay:320ms]"
-              data-testid="inventory-grid"
-            >
-              <DataGrid
-                columns={columns}
-                data={rows}
-                theme={theme}
-                pageSize={20}
-                rowHeight={44}
-                defaultSort={[{ columnId: 'scheduleCount', direction: 'desc' }]}
-                onInteraction={(events: InteractionEvent[]) => {
-                  const select = events.find(
-                    (event) => event.action === 'select'
-                  );
-                  if (select?.selections.length === 1) {
-                    // Selection predicates carry the row's visible cell values;
-                    // resolve them back to the artifact they identify.
-                    const values = new Map<string, unknown>();
-                    for (const predicate of select.selections[0].predicates) {
-                      if (predicate.type === 'set')
-                        values.set(predicate.name, predicate.values[0]);
-                    }
-                    const displayName = values.get('displayName');
-                    const workspaceName = values.get('workspaceName');
-                    const match = visibleArtifacts.find(
-                      (artifact) =>
-                        safeText(artifact.displayName) === displayName &&
-                        safeText(artifact.workspaceName) === workspaceName
-                    );
-                    if (match) {
-                      setSelectedId(match.id);
-                      return;
-                    }
-                  }
-                  // A clear event (second click on the same row) deselects.
-                  setSelectedId(null);
-                }}
-              />
+                </div>
+              ) : null}
             </div>
-          )}
+
+            <div className="border-border border-t">
+              {visibleArtifacts.length === 0 ? (
+                <div className="p-400">
+                  {filtersChanged ? (
+                    <EmptyState
+                      title="No artifacts match the current filters"
+                      hint="Adjust the search or filters to see more artifacts."
+                      action={
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className={SECONDARY_BUTTON}
+                        >
+                          <X aria-hidden="true" className="icon-size-200" />
+                          Show all artifacts
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      title="No scheduled artifacts on file"
+                      hint="Run a sync to populate the inventory."
+                    />
+                  )}
+                </div>
+              ) : (
+                <ArtifactTable
+                  rows={rows}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                />
+              )}
+            </div>
+          </section>
 
           {selected ? (
             <section
               key={selected.id}
-              className="border-border bg-card animate-slide-in rounded-2xl border p-500 shadow-sm lg:sticky lg:top-400"
+              ref={detailRef}
+              className="border-border bg-card animate-slide-in scroll-mt-400 rounded-2xl border p-500 shadow-sm 2xl:sticky 2xl:top-400"
               aria-label="Schedule detail"
             >
               <div className="flex items-start justify-between gap-300">
@@ -420,6 +425,7 @@ export function InventoryView({
                   {safeText(selected.workspaceName)}
                 </span>
               </div>
+              <PortalLinks artifact={selected} portalUrl={portalUrl} />
               <p className="text-200 mt-200 text-muted-foreground">
                 {formatNumber(selectedSchedules.length)} schedule
                 {selectedSchedules.length === 1 ? '' : 's'} ·{' '}
@@ -437,15 +443,17 @@ export function InventoryView({
               </div>
             </section>
           ) : (
-            <div className="border-border bg-card animate-fade-in flex flex-col items-center gap-200 rounded-2xl border border-dashed px-500 py-800 text-center lg:sticky lg:top-400">
+            <div className="border-border bg-card animate-fade-in flex items-center gap-300 rounded-2xl border border-dashed px-400 py-300 2xl:sticky 2xl:top-400 2xl:flex-col 2xl:gap-200 2xl:px-500 2xl:py-800 2xl:text-center">
               <MousePointerClick
                 aria-hidden="true"
-                className="icon-size-400 animate-bounce text-muted-foreground [animation-iteration-count:3]"
+                className="icon-size-300 2xl:icon-size-400 shrink-0 animate-bounce text-muted-foreground [animation-iteration-count:3]"
               />
-              <p className="text-300 font-medium">No artifact selected</p>
-              <p className="text-200 text-muted-foreground">
-                Select a row to see its schedules.
-              </p>
+              <div className="flex flex-col gap-100">
+                <p className="text-300 font-medium">No artifact selected</p>
+                <p className="text-200 text-muted-foreground">
+                  Select a row to see its schedules.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -454,48 +462,44 @@ export function InventoryView({
   );
 }
 
-function TypeBadge({ value }: { value: string }) {
-  return (
-    <span
-      className="bg-muted text-200 inline-flex max-w-full items-center truncate rounded-md px-200 py-100 font-medium"
-      title={value}
-    >
-      {value}
-    </span>
-  );
-}
-
-function FilterSelect({
-  id,
-  label,
-  value,
-  onChange,
-  options,
+/** "Open in Fabric" (when the item's page URL is known) and "Open workspace". */
+function PortalLinks({
+  artifact,
+  portalUrl,
 }: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly { value: string; count: number }[];
+  artifact: ArtifactRecord;
+  portalUrl: string | undefined;
 }) {
+  const links = fabricLinks(artifact, portalUrl);
+  if (!links.workspace) return null;
+  const name = safeText(artifact.displayName);
   return (
-    <div className="flex min-w-0 flex-col gap-100">
-      <label htmlFor={id} className="text-200 text-muted-foreground">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(CONTROL_CLASS, 'max-w-64')}
+    <div className="mt-300 flex flex-wrap items-center gap-200">
+      {links.item ? (
+        <a
+          href={links.item}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${name} in Fabric (new tab)`}
+          className={cn(
+            'bg-primary text-primary-foreground hover:bg-primary/90 text-300 inline-flex h-800 items-center gap-200 rounded-lg px-300 font-medium transition-colors duration-150',
+            FOCUS
+          )}
+        >
+          <ExternalLink aria-hidden="true" className="icon-size-200" />
+          Open in Fabric
+        </a>
+      ) : null}
+      <a
+        href={links.workspace}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Open workspace ${safeText(artifact.workspaceName)} in Fabric (new tab)`}
+        className={SECONDARY_BUTTON}
       >
-        <option value="">All</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {`${option.value} (${formatNumber(option.count)})`}
-          </option>
-        ))}
-      </select>
+        <Folder aria-hidden="true" className="icon-size-200" />
+        Open workspace
+      </a>
     </div>
   );
 }

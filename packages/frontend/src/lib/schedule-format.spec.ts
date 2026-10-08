@@ -4,7 +4,6 @@ import {
   describeSchedule,
   formatInterval,
   formatScheduleDateTime,
-  shortId,
 } from '@/lib/schedule-format';
 
 describe('describeSchedule', () => {
@@ -65,10 +64,3 @@ describe('formatScheduleDateTime', () => {
   });
 });
 
-describe('shortId', () => {
-  it('truncates long ids', () => {
-    expect(shortId('1234567890abcdef')).toBe('12345678…');
-    expect(shortId('abc')).toBe('abc');
-    expect(shortId(undefined)).toBe('—');
-  });
-});

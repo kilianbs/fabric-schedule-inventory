@@ -116,6 +116,7 @@ function App() {
     kind: 'loading',
   });
   const [lastRun, setLastRun] = useState<SyncRunRecord | null>(null);
+  const [portalUrl, setPortalUrl] = useState<string | undefined>(undefined);
   const [reloadToken, setReloadToken] = useState(0);
   const [route, navigate] = useHashRoute();
   const [jobRuns, setJobRuns] = useState<JobRunsState>({ kind: 'loading' });
@@ -150,6 +151,7 @@ function App() {
   const loadInventory = useCallback(async () => {
     try {
       const client = await getRayfinClient();
+      setPortalUrl(client.runtimeConfig?.portalUrl);
       const artifacts = await pageAllArtifacts(client);
       const byId = new Map(artifacts.map((a) => [a.id, a]));
 
@@ -257,6 +259,7 @@ function App() {
             artifacts={inventory.artifacts}
             schedulesByArtifact={inventory.schedules}
             lastRun={lastRun}
+            portalUrl={portalUrl}
             onRetry={() => void loadInventory()}
           />
         );

@@ -5,15 +5,15 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Clock } from 'lucide-react';
+import { Check, Clock, Copy } from 'lucide-react';
 
 import type { ScheduleRecord } from '@rayfin-app/shared';
 
 import {
   describeSchedule,
   formatScheduleDateTime,
-  shortId,
 } from '@/lib/schedule-format';
 import { cn } from '@/lib/utils';
 
@@ -66,17 +66,17 @@ export function ScheduleDetail({
             <Detail term="Created">
               {formatScheduleDateTime(schedule.createdDateTime)}
             </Detail>
-            <Detail term="Owner">
-              {safeText(schedule.ownerType)}
-              {schedule.ownerId ? (
-                <>
-                  {' '}
-                  <IdText value={schedule.ownerId} />
-                </>
-              ) : null}
-            </Detail>
+            <Detail term="Owner">{safeText(schedule.ownerType)}</Detail>
+            {schedule.ownerId ? (
+              <Detail term={`${safeText(schedule.ownerType)} ID`}>
+                <IdText
+                  value={schedule.ownerId}
+                  label={`${safeText(schedule.ownerType).toLowerCase()} ID`}
+                />
+              </Detail>
+            ) : null}
             <Detail term="Schedule ID">
-              <IdText value={schedule.scheduleFabricId} />
+              <IdText value={schedule.scheduleFabricId} label="schedule ID" />
             </Detail>
           </dl>
         </li>
@@ -101,14 +101,47 @@ function ScheduleBadge({ enabled }: { enabled: boolean }) {
   );
 }
 
-/** Truncated identifier; the full value is available on hover. */
-function IdText({ value }: { value: string | undefined }) {
+/** Full identifier (wraps rather than truncating) with a copy button. */
+function IdText({ value, label }: { value: string | undefined; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  if (typeof value !== 'string' || value.length === 0)
+    return <span className="text-muted-foreground">—</span>;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      // Clipboard can be blocked (e.g. inside an embedding frame); the ID
+      // stays selectable, so there is nothing else to do.
+    }
+  };
+
   return (
-    <span
-      className="font-monospace text-muted-foreground"
-      title={typeof value === 'string' ? value : undefined}
-    >
-      {shortId(value)}
+    <span className="flex min-w-0 items-start gap-100">
+      <code className="font-monospace min-w-0 break-all text-muted-foreground select-all">
+        {value}
+      </code>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? `Copied ${label}` : `Copy ${label}`}
+        title={copied ? 'Copied' : 'Copy'}
+        className="hover:bg-accent focus-visible:ring-ring -my-100 inline-flex h-500 w-500 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:outline-none"
+      >
+        {copied ? (
+          <Check aria-hidden="true" className="icon-size-100 text-primary" />
+        ) : (
+          <Copy aria-hidden="true" className="icon-size-100" />
+        )}
+      </button>
     </span>
   );
 }

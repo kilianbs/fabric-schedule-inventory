@@ -7,9 +7,16 @@
 
 import type { ArtifactRecord } from '@rayfin-app/shared';
 
+import { capacityInfo } from '@/lib/gantt';
+
+/** Filter value for artifacts without a capacity ('' already means "all"). */
+export const NO_CAPACITY = '__none__';
+
 export interface ArtifactFilters {
   /** Case-insensitive substring of the artifact display name. */
   query: string;
+  /** Capacity key (see `capacityFilterKey`), or '' for all. */
+  capacity: string;
   /** Exact workspace name, or '' for all. */
   workspace: string;
   /** Exact item type, or '' for all. */
@@ -18,6 +25,7 @@ export interface ArtifactFilters {
 
 export const DEFAULT_FILTERS: ArtifactFilters = {
   query: '',
+  capacity: '',
   workspace: '',
   type: '',
 };
@@ -25,6 +33,7 @@ export const DEFAULT_FILTERS: ArtifactFilters = {
 export function isDefaultFilters(filters: ArtifactFilters): boolean {
   return (
     filters.query.trim() === DEFAULT_FILTERS.query &&
+    filters.capacity === DEFAULT_FILTERS.capacity &&
     filters.workspace === DEFAULT_FILTERS.workspace &&
     filters.type === DEFAULT_FILTERS.type
   );
@@ -40,9 +49,40 @@ export function filterArtifacts(
       (query === '' ||
         (typeof artifact.displayName === 'string' &&
           artifact.displayName.toLowerCase().includes(query))) &&
+      (filters.capacity === '' ||
+        capacityFilterKey(artifact) === filters.capacity) &&
       (filters.workspace === '' ||
         artifact.workspaceName === filters.workspace) &&
       (filters.type === '' || artifact.itemType === filters.type)
+  );
+}
+
+/** The artifact's capacity as a filter value; never '' (that means "all"). */
+export function capacityFilterKey(artifact: ArtifactRecord): string {
+  return capacityInfo(artifact).key || NO_CAPACITY;
+}
+
+/** Distinct capacities with their labels and counts, sorted by label. */
+export function capacityOptions(
+  artifacts: readonly ArtifactRecord[]
+): { value: string; label: string; count: number }[] {
+  const options = new Map<string, { value: string; label: string; count: number }>();
+  for (const artifact of artifacts) {
+    const value = capacityFilterKey(artifact);
+    const found = options.get(value);
+    if (found) {
+      found.count += 1;
+      continue;
+    }
+    const { label, nameKnown } = capacityInfo(artifact);
+    options.set(value, {
+      value,
+      label: nameKnown ? label : `${label} (name unavailable)`,
+      count: 1,
+    });
+  }
+  return Array.from(options.values()).sort((a, b) =>
+    a.label.localeCompare(b.label)
   );
 }
 

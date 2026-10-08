@@ -135,8 +135,3 @@ export function formatScheduleDateTime(value: string | undefined): string {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value);
   return match ? `${match[1]} ${match[2]}` : value;
 }
-
-export function shortId(value: string | undefined): string {
-  if (typeof value !== 'string' || value.length === 0) return '—';
-  return value.length > 8 ? `${value.slice(0, 8)}…` : value;
-}

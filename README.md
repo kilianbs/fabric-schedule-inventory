@@ -11,7 +11,7 @@ Capabilities such as Power BI analytics and trusted server-side functions are ad
 This workspace is a Fabric schedule inventory. A server-side function (`syncInventory`) scans every workspace the app identity can access and **stores only artifacts that have at least one schedule**; artifacts without schedules are discarded, and previously stored ones are removed on the next sync.
 Each stored artifact keeps its schedules, its capacity (id and, when it can be resolved, name) and its last 20 job runs.
 
-- **Inventory** (`#/`): every scheduled artifact with its schedules.
+- **Inventory** (`#/`): every scheduled artifact with its schedules. Search and filter by **capacity**, **workspace** and **item type** (workspaces narrow to the chosen capacity; active filters show as removable chips). The table sorts by any column, pages with 10/20/50 rows per page, and opens a row's schedules beside it (below it under 1536 px); on narrow screens rows become cards.
 - **Gantt** (`#/gantt`): a "typical day" 24 h timeline, one row per scheduled artifact. Bars start at the scheduled times and are as wide as the average duration of the last *N* runs (1, 3, 5, 10 or 20; default 5). Pick the weekday, group rows by **capacity** or **workspace**, and use the per-group load strip and peak concurrency to spot overlaps.
   The **Capacity** and **Workspace** filters (multi-select, with per-option artifact counts and a search box for long lists) apply before grouping, so the load strip and peaks reflect only the filtered set; active filters show as removable chips with an "N of M artifacts" summary. Filters live in page state only (not in the URL or storage).
   Hover, focus (bars are one tab stop per row; use the arrow keys, Home and End to move between them) or tap a bar for a tooltip with the artifact, workspace, capacity, schedule, time range, average duration with runs used out of *N* (plus min/max), last run status and whether the schedule is enabled; load-strip cells list the artifacts running in each 15-minute window. Escape dismisses it. Bars are coloured by item type (see the legend), outlined red when the last run failed, and a marker shows the current time when the selected weekday is today.
@@ -20,6 +20,8 @@ Each stored artifact keeps its schedules, its capacity (id and, when it can be r
 - **About**: what the app stores and the latest sync.
 
 Job runs are stored in the `JobRun` entity at sync time because the Fabric token only exists inside the function; the page loads them lazily when the Gantt route opens.
+
+Item type icons come from [`@fabric-msft/svg-icons`](https://www.npmjs.com/package/@fabric-msft/svg-icons) (MIT), as catalogued by [FabricTools/fabric-icons](https://github.com/FabricTools/fabric-icons); the type-to-icon map is `packages/frontend/src/lib/fabric-item-icons.ts`.
 
 ## Getting started from scratch
 

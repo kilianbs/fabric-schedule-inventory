@@ -6,8 +6,11 @@ import {
 import type { UniversalAppSchema } from '@rayfin-app/shared';
 
 import {
+  type FabricCapacity,
+  type FinishedJobRun,
   isSchedulableType,
   listAll,
+  listItemJobInstances,
   listItemSchedules,
   mapWithConcurrency,
   SCHEDULABLE_ITEM_TYPES,
@@ -42,6 +45,8 @@ interface ArtifactObservation {
   item: FabricItem;
   schedulesByJobType: Map<string, FabricItemSchedule[]>;
   jobTypesProbed: readonly string[];
+  /** Latest finished runs; filled after the schedule scan. */
+  runs?: readonly FinishedJobRun[];
 }
 
 /**
@@ -115,6 +120,21 @@ async function runSyncInventory(
     const workspacesTotal = workspaces.length;
     await reportProgress('discover', 5, { workspacesTotal });
 
+    // Best effort: capacity display names (id -> name). A failure here (the
+    // app identity may lack capacity access) only leaves names undefined.
+    const capacityNames = new Map<string, string>();
+    // Fabric only lists capacities where the caller is an Admin or
+    // Contributor, so an empty or failed result is expected for app identities.
+    const capacitiesResult = await listAll<FabricCapacity>('/capacities', token);
+    const capacitiesListed = capacitiesResult.ok;
+    if (capacitiesResult.ok) {
+      for (const capacity of capacitiesResult.value) {
+        if (typeof capacity?.id === 'string' && capacity.displayName) {
+          capacityNames.set(capacity.id.toLowerCase(), capacity.displayName);
+        }
+      }
+    }
+
     let workspacesScanned = 0;
     let workspacesFailed = 0;
     let artifactsFound = 0;
@@ -163,19 +183,54 @@ async function runSyncInventory(
             probe.schedules.filter((schedule) => typeof schedule?.id === 'string')
           );
         }
-        observations.push({
-          workspace,
-          item,
-          schedulesByJobType,
-          jobTypesProbed: jobTypes,
-        });
+        // Only artifacts with at least one schedule are inventoried.
+        if ([...schedulesByJobType.values()].some((s) => s.length > 0)) {
+          observations.push({
+            workspace,
+            item,
+            schedulesByJobType,
+            jobTypesProbed: jobTypes,
+          });
+        }
       });
     }
 
-    // Persist observations: upsert artifacts, replace their schedules.
+    // Recent finished job runs for scheduled artifacts only. Probe failures
+    // degrade to "no runs"; they never fail the sync.
     await reportProgress('persist', 65, {
       workspacesProcessed: workspacesTotal,
     });
+    let runsFetched = 0;
+    await mapWithConcurrency(observations, PROBE_CONCURRENCY, async (obs) => {
+      const probe = await listItemJobInstances(
+        obs.workspace.id,
+        obs.item.id,
+        token
+      );
+      obs.runs = probe.runs;
+      runsFetched++;
+      await reportProgress(
+        'persist',
+        65 + (runsFetched / Math.max(1, observations.length)) * 10
+      );
+    });
+
+    const unresolvedCapacities = new Set(
+      observations
+        .map((observation) => observation.workspace.capacityId?.toLowerCase())
+        .filter(
+          (id): id is string => typeof id === 'string' && !capacityNames.has(id)
+        )
+    );
+    if (unresolvedCapacities.size > 0) {
+      recordError(
+        `Capacity names unavailable for ${unresolvedCapacities.size} capacities${
+          capacitiesListed ? '' : ' (capacity list not readable)'
+        }: the app identity needs Admin or Contributor access to the capacity.`
+      );
+    }
+
+    // Persist observations: upsert artifacts, replace their schedules and runs.
     const existingByWorkspaceItem = new Map<
       string,
       { id: string; present: boolean }
@@ -214,7 +269,7 @@ async function runSyncInventory(
     for (const observation of observations) {
       await reportProgress(
         'persist',
-        65 + (artifactsFound / Math.max(1, observations.length)) * 25
+        75 + (artifactsFound / Math.max(1, observations.length)) * 15
       );
       const { workspace, item, schedulesByJobType, jobTypesProbed } =
         observation;
@@ -234,6 +289,14 @@ async function runSyncInventory(
         displayName: (item.displayName ?? itemId).slice(0, 500),
         description: item.description?.slice(0, 2000),
         folderId: typeof item.folderId === 'string' ? item.folderId.slice(0, 100) : undefined,
+        capacityId:
+          typeof workspace.capacityId === 'string'
+            ? workspace.capacityId.slice(0, 100)
+            : undefined,
+        capacityName:
+          typeof workspace.capacityId === 'string'
+            ? capacityNames.get(workspace.capacityId.toLowerCase())?.slice(0, 400)
+            : undefined,
         jobTypesProbed: jobTypesProbed.join(',').slice(0, 300),
         scheduleCount: allSchedules.length,
         present: true,
@@ -242,7 +305,15 @@ async function runSyncInventory(
 
       let artifactId: string;
       if (existing) {
-        await data.Artifact.update({ id: existing.id }, artifactFields);
+        // The data client skips `undefined` fields on update (the stored
+        // value would survive) but sends `null` as a GraphQL null, so clear
+        // the capacity pair explicitly. The typed input has no null, hence
+        // the narrow cast.
+        await data.Artifact.update({ id: existing.id }, {
+          ...artifactFields,
+          capacityId: artifactFields.capacityId ?? null,
+          capacityName: artifactFields.capacityName ?? null,
+        } as unknown as typeof artifactFields);
         artifactId = existing.id;
       } else {
         const created = await data.Artifact.create({
@@ -267,26 +338,74 @@ async function runSyncInventory(
           );
         }
       }
+      // Job runs follow the same replace-per-artifact pattern. A failed write
+      // costs this artifact its run history for one sync, not the sync.
+      try {
+        const staleRuns = await data.JobRun.findMany({
+          artifactRowId: { eq: artifactId },
+        });
+        for (const stale of staleRuns) {
+          await data.JobRun.delete({ id: stale.id });
+        }
+        for (const jobRun of observation.runs ?? []) {
+          await data.JobRun.create({
+            artifactRowId: artifactId.slice(0, 100),
+            workspaceId: workspaceId.slice(0, 100),
+            itemId: itemId.slice(0, 100),
+            jobType: (jobRun.jobType || '').slice(0, 100),
+            jobInstanceId: jobRun.jobInstanceId.slice(0, 100),
+            invokeType: jobRun.invokeType.slice(0, 50),
+            status: jobRun.status,
+            startTimeUtc: jobRun.startTimeUtc.slice(0, 50),
+            endTimeUtc: jobRun.endTimeUtc.slice(0, 50),
+            durationSeconds: jobRun.durationSeconds,
+            lastSyncedAt: new Date(),
+          });
+        }
+      } catch {
+        recordError(`Artifact ${itemId}: could not store job runs.`);
+      }
       artifactsFound++;
       schedulesFound += allSchedules.length;
     }
 
-    // Soft-hide artifacts of successfully scanned workspaces that this scan
-    // no longer observes. A permission change must not erase inventory.
+    // Delete artifacts (with their schedules) that no longer have schedules
+    // or no longer exist in successfully scanned workspaces. Workspaces that
+    // failed to scan are left alone, except legacy soft-hidden rows
+    // (`present: false`), which are purged unconditionally.
     await reportProgress('reconcile', 90);
     const observedKeys = new Set(
       observations.map((observation) =>
         artifactKey(observation.workspace.id, observation.item.id)
       )
     );
+    let deleteFailures = 0;
     for (const [key, existing] of existingByWorkspaceItem) {
-      if (observedKeys.has(key) || !existing.present) continue;
+      if (observedKeys.has(key)) continue;
       const [workspaceOfArtifact] = key.split('|');
-      if (!scannedWorkspaceIds.has(workspaceOfArtifact)) continue;
-      await data.Artifact.update(
-        { id: existing.id },
-        { present: false, lastSyncedAt: new Date() }
-      );
+      if (existing.present && !scannedWorkspaceIds.has(workspaceOfArtifact)) {
+        continue;
+      }
+      try {
+        const staleSchedules = await data.Schedule.findMany({
+          artifactRowId: { eq: existing.id },
+        });
+        for (const stale of staleSchedules) {
+          await data.Schedule.delete({ id: stale.id });
+        }
+        const staleRuns = await data.JobRun.findMany({
+          artifactRowId: { eq: existing.id },
+        });
+        for (const stale of staleRuns) {
+          await data.JobRun.delete({ id: stale.id });
+        }
+        await data.Artifact.delete({ id: existing.id });
+      } catch {
+        deleteFailures++;
+      }
+    }
+    if (deleteFailures > 0) {
+      recordError(`Could not remove ${deleteFailures} outdated artifact(s).`);
     }
 
     const summary: SyncSummary = {

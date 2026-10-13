@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------
 
 import { Artifact } from './Artifact.js';
+import { JobRun } from './JobRun.js';
 import { Schedule } from './Schedule.js';
 import { SyncRun } from './SyncRun.js';
 import type { UniversalAppSchema } from '@rayfin-app/shared';
@@ -24,6 +25,6 @@ import type { UniversalAppSchema } from '@rayfin-app/shared';
  * refused at validation time. See the `data-modeling` skill.
  */
 export type { UniversalAppSchema };
-export { Artifact, Schedule, SyncRun };
+export { Artifact, JobRun, Schedule, SyncRun };
 
-export const schema = [Artifact, Schedule, SyncRun];
+export const schema = [Artifact, Schedule, SyncRun, JobRun];

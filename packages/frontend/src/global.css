@@ -41,9 +41,25 @@
   --color-destructive: #c50f1f; /* errors & destructive actions */
   --color-destructive-foreground: #ffffff;
 
+  /* Warnings (notices, caveats). Usage: bg-warning text-warning-foreground
+     border-warning-border; --color-warning-emphasis fills the warning glyph. */
+  --color-warning: #fff8df;
+  --color-warning-foreground: #5c4300;
+  --color-warning-border: #f2d57e;
+  --color-warning-emphasis: #f7b500;
+  --color-warning-glyph: #3d2c00;
+
   --color-border: #e0e0e0; /* default border */
   --color-input: #e0e0e0; /* input field borders */
   --color-ring: #0f6cbd; /* focus rings */
+
+  /* Categorical series (Gantt bars by item type). Usage: bg-series-1 … 6 */
+  --color-series-1: #0f6cbd;
+  --color-series-2: #8764b8;
+  --color-series-3: #107c10;
+  --color-series-4: #ca5010;
+  --color-series-5: #038387;
+  --color-series-6: #b146c2;
 
   --radius-none: 0;
   --radius-sm: 2px;
@@ -141,6 +157,7 @@
   --animate-fade-up: fade-up 420ms var(--ease-emphasized) both;
   --animate-slide-in: slide-in 360ms var(--ease-emphasized) both;
   --animate-grow-x: grow-x 700ms var(--ease-emphasized) both;
+  --animate-tooltip-in: tooltip-in 160ms var(--ease-emphasized) both;
 
   @keyframes fade-in {
     from {
@@ -170,6 +187,18 @@
     to {
       opacity: 1;
       transform: translateX(0);
+    }
+  }
+
+  /* Pair with an inline transform-origin pointing at the anchor. */
+  @keyframes tooltip-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 
@@ -226,9 +255,22 @@
     --color-destructive: #c50f1f;
     --color-destructive-foreground: #ffffff;
 
+    --color-warning: #3a2f0d;
+    --color-warning-foreground: #f8e3a3;
+    --color-warning-border: #7a6118;
+    --color-warning-emphasis: #f7c948;
+    --color-warning-glyph: #3d2c00;
+
     --color-border: #525252;
     --color-input: #525252;
     --color-ring: #479ef5;
+
+    --color-series-1: #479ef5;
+    --color-series-2: #b39ddb;
+    --color-series-3: #54b054;
+    --color-series-4: #f7894a;
+    --color-series-5: #3cc4c8;
+    --color-series-6: #d98ee6;
 
     --color-brand: #115ea3;
     --color-brand-foreground: #479ef5;

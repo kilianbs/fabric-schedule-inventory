@@ -58,7 +58,7 @@ const FEATURES = [
 /**
  * The landing view when the inventory is empty: explains what the app does,
  * offers the sync button, and shows live progress while metadata is fetched.
- * Also used after a sync that found no schedulable artifacts.
+ * Also used after a sync that found no scheduled artifacts.
  */
 export function Home({ lastRun, phase, onSync }: HomeProps) {
   const isRunning = phase.kind === 'running';
@@ -142,8 +142,9 @@ export function Home({ lastRun, phase, onSync }: HomeProps) {
             </p>
             <p className="text-400 mt-300 max-w-xl leading-500 text-muted-foreground">
               One synchronization scans every workspace the app identity can
-              access, finds the artifacts that support schedules and keeps their
-              schedule metadata on file. Business data never leaves Fabric.
+              access and keeps only the artifacts that have a schedule, with their
+              schedule metadata and recent job runs. Business data never leaves
+              Fabric.
             </p>
 
             {lastRun && lastRun.status === 'completed' ? (
@@ -176,7 +177,7 @@ export function Home({ lastRun, phase, onSync }: HomeProps) {
               >
                 Sync finished: {phase.summary.workspacesScanned} workspace
                 {phase.summary.workspacesScanned === 1 ? '' : 's'} scanned, no
-                schedulable artifacts found. Inventories can look empty when the
+                scheduled artifacts found. Inventories can look empty when the
                 app identity's workspaces contain none of the supported item
                 types.
               </p>

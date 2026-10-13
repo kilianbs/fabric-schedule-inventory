@@ -6,6 +6,74 @@ This is the workspace template the Rayfin Copilot plugin uses to build Fabric Ap
 The base is small on purpose: dynamic authentication, theming, an error boundary, and a welcome page that works inside or outside the Fabric portal after sign-in.
 Capabilities such as Power BI analytics and trusted server-side functions are added on demand with `npm run pack:add -- <pack>`.
 
+## Schedule inventory app
+
+This workspace is a Fabric schedule inventory. A server-side function (`syncInventory`) scans every workspace the app identity can access and **stores only artifacts that have at least one schedule**; artifacts without schedules are discarded, and previously stored ones are removed on the next sync.
+Each stored artifact keeps its schedules, its capacity (id and, when it can be resolved, name) and its last 20 job runs.
+
+- **Inventory** (`#/`): every scheduled artifact with its schedules. Search and filter by **capacity**, **workspace** and **item type** (workspaces narrow to the chosen capacity; active filters show as removable chips). The table sorts by any column, pages with 10/20/50 rows per page, and opens a row's schedules beside it (below it under 1536 px); on narrow screens rows become cards.
+- **Gantt** (`#/gantt`): a "typical day" 24 h timeline, one row per scheduled artifact. Bars start at the scheduled times and are as wide as the average duration of the last *N* runs (1, 3, 5, 10 or 20; default 5). Pick the weekday, group rows by **capacity** or **workspace**, and use the per-group load strip and peak concurrency to spot overlaps.
+  The **Capacity** and **Workspace** filters (multi-select, with per-option artifact counts and a search box for long lists) apply before grouping, so the load strip and peaks reflect only the filtered set; active filters show as removable chips with an "N of M artifacts" summary. Filters live in page state only (not in the URL or storage).
+  Hover, focus (bars are one tab stop per row; use the arrow keys, Home and End to move between them) or tap a bar for a tooltip with the artifact, workspace, capacity, schedule, time range, average duration with runs used out of *N* (plus min/max), last run status and whether the schedule is enabled; load-strip cells list the artifacts running in each 15-minute window. Escape dismisses it. Bars are coloured by item type (see the legend), outlined red when the last run failed, and a marker shows the current time when the selected weekday is today.
+  Artifacts without run history get a hatched placeholder bar. Cron schedules are capped at 288 bars per day, monthly schedules are listed but not drawn, and times are shown in each schedule's own local time zone (mixed zones are flagged, not converted).
+  Capacity names come from `GET /capacities`, which Fabric only answers for capacities where the app identity is an Admin or Contributor. Otherwise the Gantt shows `Capacity <first 8 id chars>` with a "name unavailable" marker, and the sync records a note with the number of unresolved capacities. Grant the app identity access to the capacity and sync again to resolve names; capacity fields are cleared when a workspace loses its capacity.
+- **About**: what the app stores and the latest sync.
+
+Job runs are stored in the `JobRun` entity at sync time because the Fabric token only exists inside the function; the page loads them lazily when the Gantt route opens.
+
+Item type icons come from [`@fabric-msft/svg-icons`](https://www.npmjs.com/package/@fabric-msft/svg-icons) (MIT), as catalogued by [FabricTools/fabric-icons](https://github.com/FabricTools/fabric-icons); the type-to-icon map is `packages/frontend/src/lib/fabric-item-icons.ts`.
+
+## Getting started from scratch
+
+1. **Prerequisites**
+   - Node.js 20, 22 or 24, and npm.
+   - A Microsoft account with access to the Fabric workspace where the app will be deployed.
+   - Azure Functions Core Tools, needed locally to run `syncInventory` (installed in step 4).
+2. **Clone and install** (from the repository root only; do not run `npm install` inside a package):
+
+   ```sh
+   git clone <repository-url>
+   cd fabric-schedule-inventory
+   npm install
+   ```
+
+3. **Sign in** with the Rayfin CLI (local development uses this session):
+
+   ```sh
+   npx rayfin login
+   ```
+
+4. **Install Azure Functions Core Tools** once (it asks for consent before installing):
+
+   ```sh
+   npx rayfin dev functions apply
+   ```
+
+5. **Run locally**:
+
+   ```sh
+   npm run dev
+   ```
+
+   Open <http://localhost:5173>. The inventory is empty until the first sync: press the sync button and wait for the scan to finish. The first sync also reads the last runs of every scheduled artifact, so it takes longer than later ones. Then open the **Gantt** page.
+   `npm run dev:frontend` starts only Vite, which is enough to look at the UI but cannot run a sync.
+6. **Check the workspace** (run these one after another, never `typecheck` and `build` at the same time):
+
+   ```sh
+   npm run typecheck
+   npm run build
+   npm run lint
+   npm test
+   ```
+
+7. **Deploy to Fabric**. This writes to a remote workspace, so confirm the target workspace first:
+
+   ```sh
+   npm run rayfin:up
+   ```
+
+   Open the URL it returns, sign in, press sync once, and the inventory and Gantt fill with real data.
+
 ## Workspace layout
 
 The application is an npm workspace with one control root and three base packages:

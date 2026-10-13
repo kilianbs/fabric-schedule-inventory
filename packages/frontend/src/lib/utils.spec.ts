@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatRelativeTime } from '@/lib/utils';
+import { cn, formatRelativeTime } from '@/lib/utils';
 
 describe('formatRelativeTime', () => {
   const now = new Date('2026-10-06T12:00:00Z');
@@ -21,5 +21,21 @@ describe('formatRelativeTime', () => {
   it('handles missing and invalid values', () => {
     expect(formatRelativeTime(undefined, now)).toBe('—');
     expect(formatRelativeTime('nope', now)).toBe('unknown');
+  });
+});
+
+describe('cn', () => {
+  it('keeps font-size tokens and text colours side by side', () => {
+    expect(cn('bg-primary text-primary-foreground text-300')).toBe(
+      'bg-primary text-primary-foreground text-300'
+    );
+    expect(cn('text-300 font-medium', 'text-primary')).toBe(
+      'text-300 font-medium text-primary'
+    );
+  });
+
+  it('still resolves conflicts within each group', () => {
+    expect(cn('text-200', 'text-300')).toBe('text-300');
+    expect(cn('text-foreground', 'text-primary')).toBe('text-primary');
   });
 });

@@ -7,10 +7,21 @@
 
 import { useCallback, useSyncExternalStore } from 'react';
 
-export type AppRoute = 'inventory' | 'about';
+export type AppRoute = 'inventory' | 'gantt' | 'about';
+
+const ROUTE_HASHES: Record<AppRoute, string> = {
+  inventory: '#/',
+  gantt: '#/gantt',
+  about: '#/about',
+};
+
+export function routeHref(route: AppRoute): string {
+  return ROUTE_HASHES[route];
+}
 
 export function parseRoute(hash: string): AppRoute {
-  return hash.replace(/^#\/?/, '') === 'about' ? 'about' : 'inventory';
+  const path = hash.replace(/^#\/?/, '');
+  return path === 'about' || path === 'gantt' ? path : 'inventory';
 }
 
 function subscribe(listener: () => void) {
@@ -26,7 +37,7 @@ export function useHashRoute(): [AppRoute, (route: AppRoute) => void] {
     () => ''
   );
   const navigate = useCallback((route: AppRoute) => {
-    window.location.hash = route === 'about' ? '#/about' : '#/';
+    window.location.hash = routeHref(route);
   }, []);
   return [parseRoute(hash), navigate];
 }

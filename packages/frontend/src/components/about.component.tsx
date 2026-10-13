@@ -20,7 +20,7 @@ const SCOPE = [
   {
     icon: Boxes,
     title: 'Artifacts',
-    text: 'Notebooks, pipelines, dataflows and copy jobs that support schedules.',
+    text: 'Notebooks, pipelines, dataflows and copy jobs that have a schedule.',
   },
   {
     icon: CalendarClock,
@@ -33,7 +33,7 @@ const SCOPE = [
 export function About({ lastRun }: { lastRun: SyncRunRecord | null }) {
   return (
     <main className="px-500 py-500">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-500">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-500">
         <header>
           <p className="text-100 text-primary font-semibold uppercase tracking-widest">
             About
@@ -43,8 +43,8 @@ export function About({ lastRun }: { lastRun: SyncRunRecord | null }) {
           </h1>
           <p className="text-400 mt-200 max-w-2xl leading-500 text-muted-foreground">
             One synchronization scans the workspaces the app identity can access,
-            finds the artifacts that support schedules and keeps their schedule
-            metadata on file, so you can see what runs, and when.
+            keeps only the artifacts that have a schedule, with their schedule
+            metadata and recent job runs, so you can see what runs, and when.
           </p>
         </header>
 

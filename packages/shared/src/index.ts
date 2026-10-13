@@ -15,6 +15,8 @@ export interface ArtifactRecord {
   displayName: string;
   description?: string;
   folderId?: string;
+  capacityId?: string;
+  capacityName?: string;
   jobTypesProbed: string;
   scheduleCount: number;
   present: boolean;
@@ -63,8 +65,24 @@ export interface SyncRunRecord {
   errorSummary?: string;
 }
 
+export interface JobRunRecord {
+  id: string;
+  artifactRowId: string;
+  workspaceId: string;
+  itemId: string;
+  jobType: string;
+  jobInstanceId: string;
+  invokeType: string;
+  status: string;
+  startTimeUtc: string;
+  endTimeUtc?: string;
+  durationSeconds?: number;
+  lastSyncedAt: Date;
+}
+
 export type UniversalAppSchema = {
   Artifact: ArtifactRecord;
+  JobRun: JobRunRecord;
   Schedule: ScheduleRecord;
   SyncRun: SyncRunRecord;
 };

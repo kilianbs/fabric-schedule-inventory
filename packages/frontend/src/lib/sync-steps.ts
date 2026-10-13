@@ -2,7 +2,7 @@ export const SYNC_STEPS = [
   { id: 'connect', label: 'Connect', detail: 'Listing workspaces' },
   { id: 'discover', label: 'Discover', detail: 'Scanning items and schedules' },
   { id: 'persist', label: 'Persist', detail: 'Saving the inventory' },
-  { id: 'reconcile', label: 'Reconcile', detail: 'Hiding removed items' },
+  { id: 'reconcile', label: 'Reconcile', detail: 'Removing items without schedules' },
   { id: 'done', label: 'Done', detail: 'Inventory is up to date' },
 ] as const;
 

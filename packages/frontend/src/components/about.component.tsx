@@ -33,7 +33,7 @@ const SCOPE = [
 export function About({ lastRun }: { lastRun: SyncRunRecord | null }) {
   return (
     <main className="px-500 py-500">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-500">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-500">
         <header>
           <p className="text-100 text-primary font-semibold uppercase tracking-widest">
             About

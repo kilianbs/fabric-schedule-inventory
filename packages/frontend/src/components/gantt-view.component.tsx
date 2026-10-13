@@ -169,7 +169,7 @@ export function GanttView({
 
   return (
     <main className="px-500 py-500">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-400">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-400">
         <header className="animate-fade-up">
           <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">
             Typical day

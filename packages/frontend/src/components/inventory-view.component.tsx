@@ -213,7 +213,7 @@ export function InventoryView({
 
   return (
     <main className="px-300 py-500 sm:px-500">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-500">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-500">
         <header className="animate-fade-up flex flex-wrap items-end justify-between gap-300">
           <div>
             <p className="text-100 font-semibold uppercase tracking-widest text-muted-foreground">

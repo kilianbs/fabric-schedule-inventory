@@ -2,20 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-`AGENTS.md` is the authoritative project instruction file (capability routing, pack workflow, deployment rules). Read it and the relevant `.agents/skills/*/SKILL.md` before changing the app; this file only summarizes the big picture.
+`AGENTS.md` is the authoritative project instruction file (app invariants, capability routing, pack workflow, validation and deployment rules). Read it and the relevant `.agents/skills/*/SKILL.md` before changing the app; this file only summarizes the big picture. `README.md` describes each page for users.
 
 ## What this app is
 
-A Microsoft Fabric App (Rayfin, React + Vite) that inventories scheduled Fabric items. A server-side function scans every workspace the app identity can access, keeps only item types that can carry schedules, and persists artifacts and their schedules as app-owned records. The frontend shows the inventory and sync progress.
+Fabric Schedule Inventory: a Microsoft Fabric App (Rayfin, React + Vite) that inventories scheduled Fabric items. A server-side function scans every workspace the app identity can access, keeps only item types that can carry schedules, and persists the items that have at least one schedule together with their schedules and last job runs. The frontend shows them as an inventory table and a 24-hour Gantt timeline, plus sync progress.
 
 ## Commands (run from the workspace root)
 
-- `npm run dev` — Rayfin local services plus the frontend dev server (`dev:frontend` for Vite only, port 5173)
+- `npm run dev` — Rayfin local services plus the frontend dev server (`dev:frontend` for Vite only, port 5173; it cannot run a sync)
 - `npm run typecheck` — builds shared + functions, then `tsc -b`. **The frontend build uses `tsc -b --noCheck`, so `build` does not prove type safety; always run typecheck separately.** Never run typecheck and build concurrently (shared TS outputs).
 - `npm run build` / `npm run build:fabric` — builds shared, validates and builds functions, builds data, then the frontend
 - `npm run lint` — ESLint on the frontend only
-- `npm test` — Vitest (frontend only). Single file: `npm run -w @rayfin-app/frontend test -- src/lib/to-data-table.spec.ts`; by name: add `-t "<name>"`
-- `npm run validate:visual` — visuals-pack validator; `npm run validate:functions` — functions validator
+- `npm test` — Vitest (frontend only). Single file: `npm run -w @rayfin-app/frontend test -- src/lib/gantt.spec.ts`; by name: add `-t "<name>"`
+- `npm run validate:visual` — visuals-pack validator; `npm run validate:functions` — functions validator (the functions package has no test runner)
 - `npm run pack:add -- <pack>` — apply one capability pack at a time, serially (installed packs: data-modeling, functions, visuals)
 - `npm run rayfin:up` — provisions Fabric resources (a remote write; see the `app-deployment` skill and confirm the target workspace first)
 
@@ -25,17 +25,22 @@ Final validation order per AGENTS.md: typecheck → build → lint → test → 
 
 npm workspaces with stable package names; service wiring lives in `rayfin/rayfin.yml`.
 
-- `packages/shared` (`@rayfin-app/shared`) — browser-safe contracts: `UniversalAppSchema` and record types such as `SyncRunRecord`. Must build before the others consume it.
-- `packages/data` (`@rayfin-app/data`) — decorated entity classes `Artifact`, `Schedule`, `SyncRun`, registered in the `schema` array in `src/index.ts`. Every entity needs explicit access control. When adding an entity, keep `UniversalAppSchema` in shared in step with `schema`, otherwise `client.data.<Entity>` is untyped. The frontend must not import these decorated classes; use `@rayfin-app/shared`.
-- `packages/functions` (`@rayfin-app/functions`) — Fabric user data functions. `function_app.ts` holds `syncInventory`; `fabric-scan.ts` holds the paginated Fabric REST helpers (`listAll`, `listItemSchedules`, `mapWithConcurrency`) and the `SCHEDULABLE_ITEM_TYPES` list. The Fabric scan runs under the app identity token (`ctx.Tokens.Fabric`), while persistence uses the caller's Rayfin data client. `secrets.generated.ts` is generated; don't hand-edit. `types.ts` exports `AppFunctionsSchema` used to type the client.
-- `packages/frontend` (`@rayfin-app/frontend`) — React + Vite + Tailwind v4 (tokens in `src/global.css`, `@/` alias for frontend-only imports). Hash-based routing (`hooks/use-hash-route.ts`), no router library.
+- `packages/shared` (`@rayfin-app/shared`) — browser-safe contracts: `UniversalAppSchema` and the record types `ArtifactRecord`, `ScheduleRecord`, `JobRunRecord`, `SyncRunRecord`. Must build before the others consume it.
+- `packages/data` (`@rayfin-app/data`) — decorated entity classes `Artifact`, `Schedule`, `JobRun`, `SyncRun`, registered in the `schema` array in `src/index.ts`. Every entity needs explicit access control. When adding an entity, keep `UniversalAppSchema` in shared in step with `schema`, otherwise `client.data.<Entity>` is untyped. The frontend must not import these decorated classes; use `@rayfin-app/shared`.
+- `packages/functions` (`@rayfin-app/functions`) — Fabric user data functions. `function_app.ts` holds `syncInventory`; `fabric-scan.ts` holds the paginated Fabric REST helpers (`listAll`, `listItemSchedules`, `listItemJobInstances`, `mapWithConcurrency`), `SCHEDULABLE_ITEM_TYPES` and `MAX_JOB_RUNS_PER_ITEM`. The Fabric scan runs under the app identity token (`ctx.Tokens.Fabric`), while persistence uses the caller's Rayfin data client. `secrets.generated.ts` is generated; don't hand-edit. `types.ts` exports `AppFunctionsSchema` used to type the client.
+- `packages/frontend` (`@rayfin-app/frontend`) — React + Vite + Tailwind v4 (tokens in `src/global.css`, `@/` alias for frontend-only imports). Hash-based routing (`hooks/use-hash-route.ts`: `#/`, `#/gantt`, `#/about`), no router library. Pure logic lives in `src/lib` with a `*.spec.ts` next to each module.
+
+### Pages
+
+- **Inventory** (`inventory-view`, `inventory-summary`, `artifact-table`, `schedule-detail`, `filter-menu`) — search, capacity/workspace/item-type filters (`lib/filter-artifacts.ts`), sorting and paging (`lib/table-view.ts`), portal links (`lib/fabric-links.ts`), item icons (`lib/fabric-item-icons.ts`).
+- **Gantt** (`gantt-view`, `gantt-group`, `gantt-filter`, `gantt-tooltip`) — model built by `lib/gantt.ts` (`buildGantt`, average duration of the last *N* runs, load strip, capacity info); colours in `lib/gantt-style.ts`; keyboard navigation in `lib/roving.ts`. `JobRun` rows load lazily when the route opens. Filters stay in component state.
+- **About** (`about`) — what the app stores and the latest sync.
 
 ### Sync flow (spans function, data, and frontend)
 
 1. Frontend `hooks/use-sync.ts` invokes the `syncInventory` function via `client.functions`.
-2. The function creates a `SyncRun` row (`status: running`) and updates `stage`/`progressPercent`/workspace counters as it goes (throttled, failures swallowed), then finalizes it as completed or failed with a capped error list.
+2. The function creates a `SyncRun` row (`status: running`) and updates `stage`/`progressPercent`/workspace counters as it goes (throttled, failures swallowed). It resolves capacity names from `GET /capacities` (best effort: only capacities where the app identity is Admin or Contributor), stores artifacts with schedules plus their last 20 finished job runs, removes artifacts that no longer have schedules (artifacts of workspaces that failed to scan are kept), then finalizes the run as completed or failed with a capped error list.
 3. While running, the frontend polls the latest `SyncRun` row every 1.5 s; a `running` row older than 15 min is treated as dead. On finish it refreshes entity queries.
-4. Display components (`inventory-view`, `inventory-summary`, `schedule-detail`, `sync-progress`) read `Artifact`/`Schedule` via `lib/rayfin-client.ts` and helpers like `lib/inventory-totals.ts`, `lib/to-data-table.ts`, `lib/sync-steps.ts`.
 
 ### Auth and client
 
@@ -47,5 +52,6 @@ npm workspaces with stable package names; service wiring lives in `rayfin/rayfin
 
 - Install from the root only; no nested lockfiles or nested `npm install`.
 - Do not change dependency versions pinned by the template or packs.
+- Anything that needs the Fabric API must happen inside the function at sync time; the browser has no Fabric token.
 - Read `.agents/skills/app-design/SKILL.md` before UI changes; for Rayfin API/CLI questions prefer the installed docs under `node_modules/@microsoft/*` (`rayfinDocs`) over memory.
 - Never deploy or add `--force` without explicit user confirmation of the target workspace.

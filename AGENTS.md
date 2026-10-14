@@ -2,12 +2,29 @@
 
 ## Purpose
 
-Build the requested React and Vite Fabric App from the small authenticated workspace.
-Turn on only the capabilities the app needs, preserve the protected default and dynamic authentication flow, and validate the result users will actually run.
+This repository is **Fabric Schedule Inventory**, a React and Vite Fabric App built with Project Rayfin.
+It scans every Fabric workspace the app identity can access, stores the items that have at least one schedule, and shows them as an inventory table and a 24-hour Gantt timeline.
+Extend it without breaking the protected default and dynamic authentication flow, and validate the result users will actually run.
+See [`README.md`](README.md) for the user-facing description of each page.
+
+## How the app works
+
+- **Data model** (`packages/data`, contracts in `packages/shared`): `Artifact` (a scheduled Fabric item with its workspace and capacity), `Schedule` (one Fabric schedule of an artifact), `JobRun` (the last finished runs of an artifact) and `SyncRun` (one sync with its stage, progress and capped error summary).
+- **Sync** (`packages/functions/src/function_app.ts`, `syncInventory`): lists workspaces, items, schedules and job runs through the Fabric REST helpers in `fabric-scan.ts` using the app identity token (`ctx.Tokens.Fabric`), then persists through the caller's Rayfin data client. Only item types in `SCHEDULABLE_ITEM_TYPES` are probed; artifacts without schedules are not stored and previously stored ones are removed, except in workspaces that failed to scan.
+- **Frontend** (`packages/frontend`): hash routes `#/` (inventory), `#/gantt` and `#/about` from `hooks/use-hash-route.ts`. `hooks/use-sync.ts` invokes the function and polls the latest `SyncRun` while it runs.
+
+Invariants to keep:
+
+- The Fabric token only exists inside the function, so anything that needs the Fabric API (job runs, capacity names) is read at sync time and stored, never fetched from the browser.
+- Store at most `MAX_JOB_RUNS_PER_ITEM` (20) runs per artifact; the Gantt picks its *N* client-side.
+- Capacity names come from `GET /capacities`, which only answers for capacities where the app identity is Admin or Contributor. Unresolved names fall back to a shortened id and a sync note; never invent a name.
+- Schedule times are shown in each schedule's own time zone. Mixed zones are flagged, not converted.
+- Gantt filters live in component state only, not in the URL or storage.
 
 ## Start with the source and capability
 
-Read the [`capability-router`](.agents/skills/capability-router/SKILL.md) before writing application code.
+The installed packs are `data-modeling`, `functions` and `visuals` (see `rayfinPacks` in `package.json`).
+Before adding a new capability, read the [`capability-router`](.agents/skills/capability-router/SKILL.md).
 It owns source selection and the capability decision.
 
 | Need | Apply, one command at a time | Seed or implementation anchor | Owning skill |
@@ -55,7 +72,7 @@ Do not traverse every skill or reference directory up front.
 
 ## Workspace layout
 
-The generated app has one npm workspace root and stable package ownership:
+The app has one npm workspace root and stable package ownership:
 
 ```text
 package.json                         # Root commands, workspaces, and applied packs
@@ -63,8 +80,12 @@ rayfin/rayfin.yml                    # Fabric services and package paths
 packages/frontend/                   # @rayfin-app/frontend, React and Vite
 packages/data/                       # @rayfin-app/data, decorated runtime entities
 packages/shared/                     # @rayfin-app/shared, browser-safe contracts
-packages/functions/                  # @rayfin-app/functions, added by the functions pack
+packages/functions/                  # @rayfin-app/functions, syncInventory and Fabric REST helpers
+scripts/                             # Pack scaffolder and pack validators
 ```
+
+When adding an entity, register it in the `schema` array of `packages/data/src/index.ts` and add its record contract to `UniversalAppSchema` in `packages/shared`; otherwise `client.data.<Entity>` is untyped.
+`packages/functions/src/secrets.generated.ts` is generated; do not edit it by hand.
 
 Run the normal `npm run dev`, `build`, `typecheck`, `lint`, `test`, and `pack:add` commands from the workspace root.
 Let each pack's `packageJson` declaration place dependencies in the owning workspace manifest.
@@ -132,7 +153,9 @@ Do not depend on retired plugin-specific build, validation, or deployment tools.
 
 ## Efficient validation cadence
 
-During implementation, run the smallest targeted check that covers the behavior being changed.
+During implementation, run the smallest targeted check that covers the behavior being changed, for example `npm run -w @rayfin-app/frontend test -- src/lib/gantt.spec.ts`.
+Frontend logic lives in `packages/frontend/src/lib` with a `*.spec.ts` next to each module; add or update the spec with the behavior.
+The functions package has no test runner; its checks are `npm run typecheck` and `npm run validate:functions`.
 Do not rerun the full campaign after every edit.
 
 At completion, run the applicable final sequence once, serially:

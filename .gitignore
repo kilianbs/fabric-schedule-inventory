@@ -45,3 +45,7 @@ rayfin.config.json
 *.njsproj
 *.sln
 *.sw?
+
+# Local agent tooling (not part of the app)
+.atl/
+odd/

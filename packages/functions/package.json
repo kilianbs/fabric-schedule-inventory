@@ -1,6 +1,6 @@
 {
   "name": "@rayfin-app/functions",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "dist/function_app.js",

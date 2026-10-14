@@ -1,3 +1,11 @@
+<div align="center">
+
+![Microsoft Fabric](https://img.shields.io/badge/Microsoft-Fabric-%2325c2a0?style=for-the-badge&link=https%3A%2F%2Fwww.microsoft.com%2Fes-es%2Fmicrosoft-fabric)
+![Rayfin](https://img.shields.io/badge/rayfin-Fabric%20App-blue?style=for-the-badge&link=https%3A%2F%2Fgithub.com%2Fmicrosoft%2Frayfin)
+
+
+</div>
+
 # Fabric Schedule Inventory
 
 A [Microsoft Fabric](https://learn.microsoft.com/fabric/) app that answers one question: **what is scheduled to run in my Fabric tenant, and when?**

@@ -188,20 +188,3 @@ generated file nobody touched.
 | `--dry-run`     | Print the plan; write nothing.            |
 | `--no-install`  | Do everything except `npm install`.       |
 | `--force-seeds` | Overwrite seed files you have customised. |
-
-## Checklist for a new pack
-
-1. Create `.agents/skills/<pack>/` with a `SKILL.md` **and** a `pack.json`. Every
-   skill folder must carry a `SKILL.md`; a test enumerates them.
-2. Register the pack in a local pack-composition scenario in
-   [`e2e-pack-coverage.json`](./e2e-pack-coverage.json).
-   The template guard fails when a `pack.json` has no registered composition
-   coverage.
-3. Do not restate what a package or the CLI already documents — point at it. A
-   copy in the template freezes at scaffold time and drifts.
-4. Register the pack's files in the CLI e2e template tree test, which snapshots
-   every file the template ships.
-5. Add a row to `capability-router`, and mirror it into `AGENTS.md`.
-6. Add an integration test in
-   [`scaffold.integration.test.mjs`](./scaffold.integration.test.mjs) covering a
-   fresh apply and a re-apply over an edited file.

@@ -1,20 +1,14 @@
 {
   "name": "fabric-schedule-inventory",
-  "description": "A lean React + Vite starter that grows into anything. A built-in capability router reads what you ask for, then enables the right Rayfin services, installs the right modules, and activates the right skills — Fabric analytics dashboards, CRUD apps, or functions.",
+  "description": "Microsoft Fabric app that inventories scheduled items across workspaces and shows them as a searchable table and a 24-hour Gantt timeline.",
   "license": "MIT",
-  "author": "Microsoft",
+  "author": "Kilian Baccaro Salinas",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "workspaces": [
     "packages/*"
   ],
-  "template": {
-    "name": "universal-app",
-    "displayName": "✨ Use default template",
-    "description": "A lean React + Vite starter that grows into anything. A built-in capability router reads what you ask for, then enables the right Rayfin services, installs the right modules, and activates the right skills — CRUD apps, functions, charts, or Fabric analytics dashboards.",
-    "hidden": true
-  },
   "scripts": {
     "dev": "rayfin dev",
     "dev:frontend": "npm run -w @rayfin-app/frontend dev",
@@ -26,7 +20,6 @@
     "test:watch": "npm run -w @rayfin-app/frontend test:watch",
     "typecheck": "npm run -w @rayfin-app/shared build && node scripts/validate-functions.mjs && npm run -w @rayfin-app/functions build && tsc -b",
     "pack:add": "node scripts/scaffold.mjs",
-    "test:template": "node scripts/run-template-tests.mjs",
     "rayfin:up": "rayfin up",
     "functions:build": "npm run -w @rayfin-app/functions build",
     "validate:functions": "npm run -w @rayfin-app/shared build && node scripts/validate-functions.mjs",
@@ -47,5 +40,9 @@
     "data-modeling",
     "functions",
     "visuals"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kilianbs/fabric-schedule-inventory.git"
+  }
 }

@@ -2,8 +2,8 @@
 
 ![Fabric Schedule Inventory: know what runs in Fabric, and when](docs/assets/hero.svg)
 
-![Microsoft Fabric](https://img.shields.io/badge/Microsoft-Fabric-%2325c2a0?style=for-the-badge&link=https%3A%2F%2Fwww.microsoft.com%2Fes-es%2Fmicrosoft-fabric)
-![Rayfin](https://img.shields.io/badge/rayfin-Fabric%20App-blue?style=for-the-badge&link=https%3A%2F%2Fgithub.com%2Fmicrosoft%2Frayfin)
+![Microsoft Fabric](https://img.shields.io/badge/Microsoft-Fabric-%2325c2a0?style=for-the-badge)
+![Rayfin](https://img.shields.io/badge/rayfin-Fabric%20App-blue?style=for-the-badge)
 
 
 </div>
